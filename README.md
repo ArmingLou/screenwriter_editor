@@ -17,6 +17,8 @@ Metadata: {
 }
 ```
 
+Note: Characters before the first scene do not count towards script time.
+
 ## Getting Started
 
 This project is a starting point for a Flutter application.
