@@ -464,7 +464,7 @@ class _EditorScreenState extends State<EditorScreen> {
           // final delta = Delta()..insert('$content\n');
           // _quillController.clear();
           _quillController.replaceText(0, _quillController.document.length - 1,
-              '$content\n', const TextSelection.collapsed(offset: 0));
+              '$content', const TextSelection.collapsed(offset: 0));
 
           int total = _quillController.document.length - 1;
           if (total < 0) total = 0;
@@ -586,7 +586,13 @@ class _EditorScreenState extends State<EditorScreen> {
             _showError('新建文件失败: 文件名 [ $fileName ] 在相同目录下已存在，请换一个名称');
             return;
           }
-          final plainText = _quillController.document.toPlainText();
+          var plainText = _quillController.document.toPlainText();
+          if (plainText.endsWith('\n')) {
+            plainText = plainText.substring(
+                0,
+                plainText.length -
+                    1); //_quillController.document.toPlainText()方法，会自动在文末加一个\n换行符
+          }
           await file2.writeAsString(plainText, flush: true);
 
           // if (savePath.isEmpty) {
@@ -630,7 +636,13 @@ class _EditorScreenState extends State<EditorScreen> {
           }
           fileName = savePath;
 
-          final plainText = _quillController.document.toPlainText();
+          var plainText = _quillController.document.toPlainText();
+          if (plainText.endsWith('\n')) {
+            plainText = plainText.substring(
+                0,
+                plainText.length -
+                    1); //_quillController.document.toPlainText()方法，会自动在文末加一个\n换行符
+          }
           Uint8List bytes = Utf8Codec().encode(plainText);
 
           // 其他平台使用FilePicker选择保存位置
@@ -651,7 +663,13 @@ class _EditorScreenState extends State<EditorScreen> {
         }
       } else {
         // 写入文件内容
-        final plainText = _quillController.document.toPlainText();
+        var plainText = _quillController.document.toPlainText();
+        if (plainText.endsWith('\n')) {
+          plainText = plainText.substring(
+              0,
+              plainText.length -
+                  1); //_quillController.document.toPlainText()方法，会自动在文末加一个\n换行符
+        }
         final file2 = File(savePath);
         await file2.writeAsString(plainText, flush: true);
       }
