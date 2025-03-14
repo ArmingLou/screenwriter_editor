@@ -137,6 +137,24 @@ class _EditorScreenState extends State<EditorScreen> {
         var tempStr = fullText.substring(tempStart, tempEnd);
         var i = tempStr.indexOf('\n\n');
         if (i >= 0) {
+          var comm = fullText.substring(tempStart + i, _quillController.selection.baseOffset);
+          // 假设 [[]] 和 /* */ 不存在相互嵌套的简单情况处理
+          var j1 = comm.indexOf(']]');
+          if (j1 >= 0) {
+            var j2 = comm.indexOf('[[');
+            if (j2 < 0 || j2 > j1) {
+              //截断的 注释，继续往前找
+              continue;
+            }
+          }
+          var k1 = comm.indexOf('*/');
+          if (k1 >= 0) {
+            var k2 = comm.indexOf('/*');
+            if (k2 < 0 || k2 > k1) {
+              //截断的 注释，继续往前找
+              continue;
+            }
+          }
           beforTextOffset = tempStart + i;
           break;
         }
@@ -156,8 +174,26 @@ class _EditorScreenState extends State<EditorScreen> {
           break;
         }
         var tempStr = fullText.substring(tempStart, tempEnd);
-        var i = tempStr.indexOf('\n\n');
+        var i = tempStr.lastIndexOf('\n\n');
         if (i >= 0) {
+          var comm = fullText.substring(_quillController.selection.baseOffset, tempStart + i);
+          // 假设 [[]] 和 /* */ 不存在相互嵌套的简单情况处理
+          var j1 = comm.lastIndexOf('[[');
+          if (j1 >= 0) {
+            var j2 = comm.lastIndexOf(']]');
+            if (j2 < 0 || j2 < j1) {
+              //截断的 注释，继续往前找
+              continue;
+            }
+          }
+          var k1 = comm.lastIndexOf('/*');
+          if (k1 >= 0) {
+            var k2 = comm.lastIndexOf('*/');
+            if (k2 < 0 || k2 < k1) {
+              //截断的 注释，继续往前找
+              continue;
+            }
+          }
           end = tempStart + i;
           break;
         }
@@ -230,19 +266,19 @@ class _EditorScreenState extends State<EditorScreen> {
           if (element.type != 'comment') {
             // comment 是重复的字数。
             tempStartChars += element.range.length + 1; // 加个换行符的数量1.
-          }
-          // 简单地从metadata中找到 每分钟多少个字的配置。前提是这个json配置的字段，格式上要单独一行。
-          int i = element.text.indexOf('"chars_per_minu"');
-          if (i > 0) {
-            String s = element.text.substring(i + 16);
-            int j = s.indexOf(',');
-            String v = '';
-            if (j > 1) {
-              v = s.substring(s.indexOf(':') + 1, j);
-              _charsPerMinu = double.parse(v.trim());
-            } else if (j == -1) {
-              v = s.substring(s.indexOf(':') + 1);
-              _charsPerMinu = double.parse(v.trim());
+            // 简单地从metadata中找到 每分钟多少个字的配置。前提是这个json配置的字段，格式上要单独一行。
+            int i = element.text.indexOf('"chars_per_minu"');
+            if (i > 0) {
+              String s = element.text.substring(i + 16);
+              int j = s.indexOf(',');
+              String v = '';
+              if (j > 1) {
+                v = s.substring(s.indexOf(':') + 1, j);
+                _charsPerMinu = double.parse(v.trim());
+              } else if (j == -1) {
+                v = s.substring(s.indexOf(':') + 1);
+                _charsPerMinu = double.parse(v.trim());
+              }
             }
           }
         }
