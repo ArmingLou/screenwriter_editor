@@ -858,6 +858,14 @@ class _EditorScreenState extends State<EditorScreen> {
           Attribute.fromKeyValue(Attribute.italic.key, true),
           Attribute.fromKeyValue(Attribute.color.key, '#00FF00')
         ];
+      case 'note':
+        return [
+          // Attribute.fromKeyValue(Attribute.font.key, "Courier"),
+          Attribute.fromKeyValue(Attribute.size.key, "12"),
+          Attribute.fromKeyValue(Attribute.bold.key, null),
+          Attribute.fromKeyValue(Attribute.italic.key, null),
+          Attribute.fromKeyValue(Attribute.color.key, '#CDBE70')
+        ];
       case 'comment':
         return [
           // Attribute.fromKeyValue(Attribute.font.key, "Courier"),

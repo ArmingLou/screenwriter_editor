@@ -60,18 +60,19 @@ class FountainParser {
 
       //找到最早的 注解开口， 找下一个注解闭口
       String endTag = commentPatterns[commentStarted][1];
+      String type = endTag == ']]' ? 'note' : 'comment';
       var idxEnd = line.indexOf(endTag, idxStart);
       if (idxEnd < 0) {
         // 非闭合注解行，剩下的都是注解
         // 添加注释元素
         elements.add(FountainElement(
-          'comment',
+          type,
           '', //注解不返回text内容。暂时不需要，看以后情况。
           Range(offset + idxStart, line.length - idxStart),
         ));
       } else {
         elements.add(FountainElement(
-          'comment',
+          type,
           '', //注解不返回text内容。暂时不需要，看以后情况。
           Range(offset + idxStart, idxEnd - idxStart + endTag.length),
         ));
