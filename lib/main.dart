@@ -794,6 +794,14 @@ class _EditorScreenState extends State<EditorScreen> {
           Attribute.fromKeyValue(Attribute.italic.key, null),
           Attribute.fromKeyValue(Attribute.color.key, '#0000FF')
         ];
+      case 'parenthetical':
+        return [
+          // Attribute.fromKeyValue(Attribute.font.key, "Courier"),
+          Attribute.fromKeyValue(Attribute.size.key, "14"),
+          Attribute.fromKeyValue(Attribute.bold.key, null),
+          Attribute.fromKeyValue(Attribute.italic.key, true),
+          Attribute.fromKeyValue(Attribute.color.key, '#6B8E23')
+        ];
       case 'dialogue':
         return [
           // Attribute.fromKeyValue(Attribute.font.key, "Courier"),

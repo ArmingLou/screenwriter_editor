@@ -100,6 +100,7 @@ class FountainParser {
     int offset = 0;
 
     var dialogueStarted = false;
+    var parentheticalStarted = "";
     var lastLineWasEmpty = true;
 
     for (var line in lines) {
@@ -126,13 +127,45 @@ class FountainParser {
           //dialogue 永远最优先
           if (trimmedLine.isEmpty && length < 2) {
             dialogueStarted = false;
+            parentheticalStarted = "";
           } else {
-            // 对话
-            elements.add(FountainElement(
-              'dialogue',
-              line,
-              Range(offset, length),
-            ));
+            if (parentheticalStarted.isNotEmpty) {
+              elements.add(FountainElement(
+                'parenthetical',
+                line,
+                Range(offset, length),
+              ));
+              if (trimmedLine.endsWith(parentheticalStarted)) {
+                parentheticalStarted = "";
+              }
+            } else {
+              if (trimmedLine.startsWith('(')) {
+                if (!trimmedLine.endsWith(')')) {
+                  parentheticalStarted = ')';
+                }
+                elements.add(FountainElement(
+                  'parenthetical',
+                  line,
+                  Range(offset, length),
+                ));
+              } else if (trimmedLine.startsWith('（')) {
+                if (!trimmedLine.endsWith('）')) {
+                  parentheticalStarted = '）';
+                }
+                elements.add(FountainElement(
+                  'parenthetical',
+                  line,
+                  Range(offset, length),
+                ));
+              } else {
+                // 对话
+                elements.add(FountainElement(
+                  'dialogue',
+                  line,
+                  Range(offset, length),
+                ));
+              }
+            }
           }
         }
         // 以下都是 非dialogueStarted 情况
@@ -202,11 +235,19 @@ class FountainParser {
         // 注释闭合后，后段需要延续的样式
         if (trimmedLine.isNotEmpty) {
           if (dialogueStarted) {
-            elements.add(FountainElement(
-              'dialogue',
-              line,
-              Range(offset, length),
-            ));
+            if (parentheticalStarted.isNotEmpty) {
+              elements.add(FountainElement(
+                'parenthetical',
+                line,
+                Range(offset, length),
+              ));
+            } else {
+              elements.add(FountainElement(
+                'dialogue',
+                line,
+                Range(offset, length),
+              ));
+            }
           } else {
             elements.add(FountainElement(
               'action',
