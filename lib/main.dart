@@ -116,7 +116,7 @@ class _EditorScreenState extends State<EditorScreen> {
     int preChar;
     int sufChar;
     if (_onlyEditRefresh) {
-      preChar = 150;
+      preChar = 20;
       sufChar = 20;
     } else {
       preChar = 150;
@@ -125,13 +125,43 @@ class _EditorScreenState extends State<EditorScreen> {
     }
 
     int beforTextOffset = 0;
-    beforTextOffset = _quillController.selection.baseOffset - preChar;
-    if (beforTextOffset < 0) {
-      beforTextOffset = 0;
+    // find beforTextOffset
+    int tempEnd = _quillController.selection.baseOffset - preChar;
+    if (tempEnd > 0) {
+      int tempStart = tempEnd;
+      while (true) {
+        tempStart -= 30;
+        if (tempStart <= 0) {
+          break;
+        }
+        var tempStr = fullText.substring(tempStart, tempEnd);
+        var i = tempStr.indexOf('\n\n');
+        if (i >= 0) {
+          beforTextOffset = tempStart + i;
+          break;
+        }
+      }
     }
+
     int end = _quillController.selection.extentOffset + sufChar;
-    if (end > fullText.length) {
+    if (end >= fullText.length) {
       end = fullText.length;
+    } else {
+      int tempStart = end;
+      tempEnd = tempStart;
+      while (true) {
+        tempEnd += 30;
+        if (tempEnd >= fullText.length) {
+          end = fullText.length;
+          break;
+        }
+        var tempStr = fullText.substring(tempStart, tempEnd);
+        var i = tempStr.indexOf('\n\n');
+        if (i >= 0) {
+          end = tempStart + i;
+          break;
+        }
+      }
     }
     // len = len - beforTextOffset;
     // if (len < 0) {
