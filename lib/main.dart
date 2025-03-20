@@ -254,18 +254,18 @@ class _EditorScreenState extends State<EditorScreen> {
     bool wasBreak = false;
 
     bool fisrtScencStarted = false;
-    int tempStartChars = 0;
+    // int tempStartChars = 0;
 
     RTF:
     for (final element in parsed) {
       if (!fisrtScencStarted && thisFormatFullTime == _lastFormatingFullTime) {
         if (element.type == 'scene_heading') {
           fisrtScencStarted = true;
-          _startChars = tempStartChars;
+          _startChars = element.range.start+element.range.length;
         } else {
           if (element.type != 'comment') {
             // comment 是重复的字数。
-            tempStartChars += element.range.length + 1; // 加个换行符的数量1.
+            // tempStartChars += element.range.length + 1; // 加个换行符的数量1.
             // 简单地从metadata中找到 每分钟多少个字的配置。前提是这个json配置的字段，格式上要单独一行。
             int i = element.text.indexOf('"chars_per_minu"');
             if (i > 0) {
