@@ -80,7 +80,7 @@ class _EditorScreenState extends State<EditorScreen> {
   int _lastTapSliderTime = 0;
   int _startChars = 0; //第一个场景之前的字数，作用是预估时间需要减去。
   double _charsPerMinu = 243.22; //按每分钟多少个字预估。
-
+  bool fisrtScencStarted = false;
   // 获取可见区域文本
   Future<void> formatText(int index, int len, Attribute? attribute,
       bool shouldNotifyListeners) async {
@@ -137,7 +137,8 @@ class _EditorScreenState extends State<EditorScreen> {
         var tempStr = fullText.substring(tempStart, tempEnd);
         var i = tempStr.indexOf('\n\n');
         if (i >= 0) {
-          var comm = fullText.substring(tempStart + i, _quillController.selection.baseOffset);
+          var comm = fullText.substring(
+              tempStart + i, _quillController.selection.baseOffset);
           // 假设 [[]] 和 /* */ 不存在相互嵌套的简单情况处理
           var j1 = comm.indexOf(']]');
           if (j1 >= 0) {
@@ -176,7 +177,8 @@ class _EditorScreenState extends State<EditorScreen> {
         var tempStr = fullText.substring(tempStart, tempEnd);
         var i = tempStr.lastIndexOf('\n\n');
         if (i >= 0) {
-          var comm = fullText.substring(_quillController.selection.baseOffset, tempStart + i);
+          var comm = fullText.substring(
+              _quillController.selection.baseOffset, tempStart + i);
           // 假设 [[]] 和 /* */ 不存在相互嵌套的简单情况处理
           var j1 = comm.lastIndexOf('[[');
           if (j1 >= 0) {
@@ -253,7 +255,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
     bool wasBreak = false;
 
-    bool fisrtScencStarted = false;
+    fisrtScencStarted = false;
     // int tempStartChars = 0;
 
     RTF:
@@ -261,7 +263,7 @@ class _EditorScreenState extends State<EditorScreen> {
       if (!fisrtScencStarted && thisFormatFullTime == _lastFormatingFullTime) {
         if (element.type == 'scene_heading') {
           fisrtScencStarted = true;
-          _startChars = element.range.start+element.range.length;
+          _startChars = element.range.start + element.range.length;
         } else {
           if (element.type != 'comment') {
             // comment 是重复的字数。
@@ -978,28 +980,34 @@ class _EditorScreenState extends State<EditorScreen> {
                       valueListenable: _charsLenNotifier,
                       builder: (context, arr, _) {
                         // 预估时间处理：
-                        int total = arr[1] - _startChars;
-                        int curr = arr[0] - _startChars;
-                        if (curr < 0) curr = 0;
-                        double totalMinu = total / _charsPerMinu;
-                        double currMinu = curr / _charsPerMinu;
                         String totalLabel = '';
                         String currLabel = '';
-                        if (totalMinu > 1) {
-                          int totalM = totalMinu.toInt();
-                          totalLabel = "$totalM'";
+                        if (fisrtScencStarted) {
+                          int total = arr[1] - _startChars;
+                          int curr = arr[0] - _startChars;
+                          if (curr < 0) curr = 0;
+                          double totalMinu = total / _charsPerMinu;
+                          double currMinu = curr / _charsPerMinu;
+
+                          if (totalMinu > 1) {
+                            int totalM = totalMinu.toInt();
+                            totalLabel = "$totalM'";
+                          } else {
+                            int totalSeconds = (totalMinu * 60).toInt();
+                            int totalS = totalSeconds % 60;
+                            totalLabel = "$totalS”";
+                          }
+                          if (currMinu > 1) {
+                            int currM = currMinu.toInt();
+                            currLabel = "$currM'";
+                          } else {
+                            int currSeconds = (currMinu * 60).toInt();
+                            int currS = currSeconds % 60;
+                            currLabel = "$currS”";
+                          }
                         } else {
-                          int totalSeconds = (totalMinu * 60).toInt();
-                          int totalS = totalSeconds % 60;
-                          totalLabel = "$totalS”";
-                        }
-                        if (currMinu > 1) {
-                          int currM = currMinu.toInt();
-                          currLabel = "$currM'";
-                        } else {
-                          int currSeconds = (currMinu * 60).toInt();
-                          int currS = currSeconds % 60;
-                          currLabel = "$currS”";
+                          currLabel = '0”';
+                          totalLabel = '0”';
                         }
                         return LinearPercentIndicator(
                           width: _sliderWidth,
