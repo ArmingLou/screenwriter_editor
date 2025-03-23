@@ -93,7 +93,7 @@ BEGIN
             VALUE "FileDescription", "screenwriter_editor" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "screenwriter_editor" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2025 com.example. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2025 id.arming. All rights reserved." "\0"
             VALUE "OriginalFilename", "screenwriter_editor.exe" "\0"
             VALUE "ProductName", "screenwriter_editor" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"

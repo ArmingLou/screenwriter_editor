@@ -1,4 +1,4 @@
-package com.example.screenwriter_editor
+package id.arming.screenwriter_editor
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -172,9 +172,19 @@ class FountainParser {
         // 以下都是 非dialogueStarted 情况
         // 场景标题
         else if (lastLineWasEmpty &&
-            (trimmedLine.startsWith('INT.') ||
-                trimmedLine.startsWith('EXT.') ||
-                trimmedLine.startsWith('.'))) {
+            (trimmedLine.startsWith('.') ||
+                trimmedLine.toUpperCase().startsWith('INT.') ||
+                trimmedLine.toUpperCase().startsWith('EXT.') ||
+                trimmedLine.toUpperCase().startsWith('EST.') ||
+                trimmedLine.toUpperCase().startsWith('INT ') ||
+                trimmedLine.toUpperCase().startsWith('EXT ') ||
+                trimmedLine.toUpperCase().startsWith('EST ') ||
+                trimmedLine.toUpperCase().startsWith('INT./EXT.') ||
+                trimmedLine.toUpperCase().startsWith('INT./EXT ') ||
+                trimmedLine.toUpperCase().startsWith('INT/EXT.') ||
+                trimmedLine.toUpperCase().startsWith('INT/EXT ') ||
+                trimmedLine.toUpperCase().startsWith('I/E.') ||
+                trimmedLine.toUpperCase().startsWith('I/E '))) {
           elements.add(FountainElement(
             'scene_heading',
             line,
@@ -186,7 +196,10 @@ class FountainParser {
             line,
             Range(offset, length),
           ));
-        } else if (lastLineWasEmpty && trimmedLine.startsWith('>')) {
+        } else if (lastLineWasEmpty &&
+            (trimmedLine.startsWith('>') ||
+                (trimmedLine == trimmedLine.toUpperCase() &&
+                    trimmedLine.endsWith("TO:")))) {
           elements.add(FountainElement(
             'transition',
             line,
