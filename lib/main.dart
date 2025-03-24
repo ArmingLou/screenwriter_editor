@@ -501,26 +501,33 @@ class _EditorScreenState extends State<EditorScreen> {
         if (file.extension?.toLowerCase() == 'fountain') {
           // 获取真实文件路径并解码
           String? filePath;
-          var i = file.identifier!.indexOf("%3A%2F");
-          if (i > -1) {
-            filePath = file.identifier!.substring(i + 3);
-          } else {
-            var i = file.identifier!.indexOf("%3A");
+          if (Platform.isAndroid) {
+            var i = file.identifier!.indexOf("%3A%2F");
             if (i > -1) {
               filePath = file.identifier!.substring(i + 3);
-              final dir = await getExternalStorageDirectory();
-              var dirPath = dir!.path;
-              final j = dirPath.indexOf('/Android/data/');
-              dirPath = dirPath.substring(0, j);
-              filePath = dirPath + '/' + filePath;
+            } else {
+              var i = file.identifier!.indexOf("%3A");
+              if (i > -1) {
+                filePath = file.identifier!.substring(i + 3);
+                final dir = await getExternalStorageDirectory();
+                var dirPath = dir!.path;
+                final j = dirPath.indexOf('/Android/data/');
+                dirPath = dirPath.substring(0, j);
+                filePath = dirPath + '/' + filePath;
+              }
+            }
+            if (filePath == null) {
+              throw Exception('无法获取文件路径');
+            }
+
+            // 解码URL编码的路径
+            filePath = Uri.decodeFull(filePath);
+          } else {
+            filePath = file.path;
+            if (filePath == null) {
+              throw Exception('无法获取文件路径');
             }
           }
-          if (filePath == null) {
-            throw Exception('无法获取文件路径');
-          }
-
-          // 解码URL编码的路径
-          filePath = Uri.decodeFull(filePath);
 
           // 检查文件是否可访问
           if (!await File(filePath).exists()) {
@@ -594,7 +601,43 @@ class _EditorScreenState extends State<EditorScreen> {
       //   return;
       // }
 
-      if (!savePath.contains('/')) {
+      if (Platform.isIOS || (!savePath.contains('/') && !Platform.isAndroid) ) {
+        // ios 每次保存都要选择保存路径，是另存为，只能支持这样了。控件 open file 拿到的是临时文件路径，没办法拿到实际。
+        // 其他平台，只有新文件才需要选择保存路径。
+        Directory directory;
+        String fileName = 'script.fountain';
+        directory = await getApplicationDocumentsDirectory();
+        // 用时间戳做文件名
+        if (!savePath.endsWith('.fountain')) {
+          savePath = '$savePath.fountain';
+        }
+        fileName = savePath.substring(savePath.lastIndexOf('/') + 1);
+
+        var plainText = _quillController.document.toPlainText();
+        if (plainText.endsWith('\n')) {
+          plainText = plainText.substring(
+              0,
+              plainText.length -
+                  1); //_quillController.document.toPlainText()方法，会自动在文末加一个\n换行符
+        }
+        Uint8List bytes = Utf8Codec().encode(plainText);
+
+        // 其他平台使用FilePicker选择保存位置
+        await FilePicker.platform.clearTemporaryFiles();
+        final result = await FilePicker.platform.saveFile(
+          dialogTitle: '保存Fountain文件',
+          fileName: fileName,
+          initialDirectory: directory.path,
+          allowedExtensions: ['fountain'],
+          lockParentWindow: true,
+          bytes: bytes,
+        );
+
+        if (result == null) return;
+        // savePath = result.endsWith('.fountain') ? result : '$result.fountain';
+        savePath =
+            result; // TODO Arming (2025-03-12) : android 保存文件时，切换目录保存，会有bug。保存的文件实际在切换了的目录了，但返回的result总是Download目录下的地址。
+      } else if (!savePath.contains('/')) {
         // 只输入了文件名的情况
         // 获取默认保存路径
         Directory directory;
@@ -697,39 +740,40 @@ class _EditorScreenState extends State<EditorScreen> {
           // // 重新 写入文件内容, 可编辑的副本。
           // final file2 = File(savePath);
           // await file2.writeAsString(plainText, flush: true);
-        } else {
-          directory = await getApplicationDocumentsDirectory();
-          // 用时间戳做文件名
-          if (!savePath.endsWith('.fountain')) {
-            savePath = '$savePath.fountain';
-          }
-          fileName = savePath;
-
-          var plainText = _quillController.document.toPlainText();
-          if (plainText.endsWith('\n')) {
-            plainText = plainText.substring(
-                0,
-                plainText.length -
-                    1); //_quillController.document.toPlainText()方法，会自动在文末加一个\n换行符
-          }
-          Uint8List bytes = Utf8Codec().encode(plainText);
-
-          // 其他平台使用FilePicker选择保存位置
-          await FilePicker.platform.clearTemporaryFiles();
-          final result = await FilePicker.platform.saveFile(
-            dialogTitle: '保存Fountain文件',
-            fileName: fileName,
-            initialDirectory: directory.path,
-            allowedExtensions: ['fountain'],
-            lockParentWindow: true,
-            bytes: bytes,
-          );
-
-          if (result == null) return;
-          // savePath = result.endsWith('.fountain') ? result : '$result.fountain';
-          savePath =
-              result; // TODO Arming (2025-03-12) : android 保存文件时，切换目录保存，会有bug。保存的文件实际在切换了的目录了，但返回的result总是Download目录下的地址。
         }
+        //  else {
+        //   directory = await getApplicationDocumentsDirectory();
+        //   // 用时间戳做文件名
+        //   if (!savePath.endsWith('.fountain')) {
+        //     savePath = '$savePath.fountain';
+        //   }
+        //   fileName = savePath;
+
+        //   var plainText = _quillController.document.toPlainText();
+        //   if (plainText.endsWith('\n')) {
+        //     plainText = plainText.substring(
+        //         0,
+        //         plainText.length -
+        //             1); //_quillController.document.toPlainText()方法，会自动在文末加一个\n换行符
+        //   }
+        //   Uint8List bytes = Utf8Codec().encode(plainText);
+
+        //   // 其他平台使用FilePicker选择保存位置
+        //   await FilePicker.platform.clearTemporaryFiles();
+        //   final result = await FilePicker.platform.saveFile(
+        //     dialogTitle: '保存Fountain文件',
+        //     fileName: fileName,
+        //     initialDirectory: directory.path,
+        //     allowedExtensions: ['fountain'],
+        //     lockParentWindow: true,
+        //     bytes: bytes,
+        //   );
+
+        //   if (result == null) return;
+        //   // savePath = result.endsWith('.fountain') ? result : '$result.fountain';
+        //   savePath =
+        //       result; // TODO Arming (2025-03-12) : android 保存文件时，切换目录保存，会有bug。保存的文件实际在切换了的目录了，但返回的result总是Download目录下的地址。
+        // }
       } else {
         // 写入文件内容
         var plainText = _quillController.document.toPlainText();
