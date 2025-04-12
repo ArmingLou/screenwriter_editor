@@ -1020,6 +1020,21 @@ class _EditorScreenState extends State<EditorScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  Expanded(
+                    child: ValueListenableBuilder<String>(
+                      valueListenable: _stateBarMsgNotifier,
+                      builder: (context, msg, _) {
+                        return Text(
+                          softWrap: false,
+                          overflow: TextOverflow.ellipsis,
+                          msg,
+                          style: const TextStyle(
+                              fontSize: 12,
+                              color: Color.fromARGB(255, 201, 79, 60)),
+                        );
+                      },
+                    ),
+                  ),
                   IconButton(
                     icon: Icon(Icons.bar_chart, size: 18),
                     onPressed: () {
@@ -1036,20 +1051,9 @@ class _EditorScreenState extends State<EditorScreen> {
                     padding: EdgeInsets.zero,
                     constraints: BoxConstraints(),
                   ),
-                  ValueListenableBuilder<String>(
-                    valueListenable: _stateBarMsgNotifier,
-                    builder: (context, msg, _) {
-                      return Text(
-                        msg,
-                        style: const TextStyle(
-                            fontSize: 12,
-                            color: Color.fromARGB(255, 201, 79, 60)),
-                      );
-                    },
-                  ),
                   Padding(
                     //左边添加8像素补白
-                    padding: EdgeInsets.only(left: 10),
+                    padding: EdgeInsets.only(left: 0),
                     child: Text(
                       '字数:',
                       style: const TextStyle(fontSize: 12),
