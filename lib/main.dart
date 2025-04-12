@@ -9,6 +9,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:path/path.dart' as path;
+import 'package:screenwriter_editor/statis.dart';
 import 'fountain_parser.dart';
 import 'package:intl/intl.dart';
 import 'package:percent_indicator/percent_indicator.dart';
@@ -74,6 +75,8 @@ class _EditorScreenState extends State<EditorScreen> {
   static const _maxQueueLength = 2;
 
   final double _sliderWidth = 180;
+
+  Statis? statisGlobal;
 
   int _lastSelection = -1;
 
@@ -209,10 +212,16 @@ class _EditorScreenState extends State<EditorScreen> {
     final visibleText = fullText.substring(beforTextOffset, end);
 
     // 解析并格式化可见文本
-    final parsed = await compute(_parseText, visibleText);
-
+    final parsed = await compute<Map<String, dynamic>, ParserOutput>(
+      (Map<String, dynamic> params) {
+        final text = params['text'] as String;
+        final parser = FountainParser();
+        return parser.parse(false, text);
+      },
+      { 'text': visibleText},
+    );
     RT:
-    for (final element in parsed) {
+    for (final element in parsed.elements) {
       final styles = _getStyleForElement(element);
       if (styles != null) {
         for (var style in styles) {
@@ -248,10 +257,20 @@ class _EditorScreenState extends State<EditorScreen> {
 
     // final selection = _quillController.selection;
     final fullText = _quillController.document.toPlainText();
+    statisGlobal = null;
 
     // 解析并格式化可见文本
-    final parsed = await compute(_parseText, fullText);
+    // final parsed = await compute(_parseText, fullText);
+    final parsed = await compute<Map<String, dynamic>, ParserOutput>(
+      (Map<String, dynamic> params) {
+        final text = params['text'] as String;
+        final parser = FountainParser();
+        return parser.parse(true, text);
+      },
+      { 'text': fullText},
+    );
 
+    statisGlobal = parsed.statis;
     // var count = 0;
 
     bool wasBreak = false;
@@ -260,7 +279,7 @@ class _EditorScreenState extends State<EditorScreen> {
     // int tempStartChars = 0;
 
     RTF:
-    for (final element in parsed) {
+    for (final element in parsed.elements) {
       if (!fisrtScencStarted && thisFormatFullTime == _lastFormatingFullTime) {
         if (element.type == 'scene_heading') {
           fisrtScencStarted = true;
@@ -439,10 +458,11 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   // 在isolate中解析文本
-  static Future<List<FountainElement>> _parseText(String text) async {
-    final parser = FountainParser();
-    return parser.parse(text);
-  }
+  // static Future<List<FountainElement>> _parseText(
+  //     Statis? statis, String text) async {
+  //   final parser = FountainParser();
+  //   return parser.parse(statis, text);
+  // }
 
   void whenChangeSlect(TextSelection t) {
     int total = _quillController.document.length - 1;
@@ -601,7 +621,7 @@ class _EditorScreenState extends State<EditorScreen> {
       //   return;
       // }
 
-      if (Platform.isIOS || (!savePath.contains('/') && !Platform.isAndroid) ) {
+      if (Platform.isIOS || (!savePath.contains('/') && !Platform.isAndroid)) {
         // ios 每次保存都要选择保存路径，是另存为，只能支持这样了。控件 open file 拿到的是临时文件路径，没办法拿到实际。
         // 其他平台，只有新文件才需要选择保存路径。
         Directory directory;

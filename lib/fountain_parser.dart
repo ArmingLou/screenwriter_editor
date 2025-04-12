@@ -1,3 +1,12 @@
+import 'package:screenwriter_editor/fountain_constants.dart';
+import 'package:screenwriter_editor/statis.dart';
+
+class ParserOutput {
+  final List<FountainElement> elements;
+  final Statis? statis;
+  ParserOutput(this.elements, this.statis);
+}
+
 class FountainElement {
   final String type;
   final String text;
@@ -27,6 +36,9 @@ class FountainParser {
     ['/*', '*/'],
   ];
   int commentStarted = -1; // 0: [[]] ；1: /* */
+
+  var statis = Statis.empty();
+  var preCharater = '';
 
   CommentResult findCommond(String line, int offset) {
     final elements = <FountainElement>[];
@@ -93,8 +105,88 @@ class FountainParser {
     return CommentResult(elements, left);
   }
 
-  List<FountainElement> parse(String text) {
+  String trimCharacterName(String character) {
+    var t = character.replaceAll(RegExp(r'^[ \t]*(@)?'), '').trim();
+    t = t
+        .replaceAll(RegExp(r'[ \t]*(\(.*\)|（.*）)[ \t]*([ \t]*\^)?$'), '')
+        .trim();
+    return t;
+  }
+
+  _processCharater(bool doStatis, String text) {
+    if (doStatis) {
+      final match = FountainConstants.regex['character']!.firstMatch(text);
+      if (match != null) {
+        var name = trimCharacterName(text);
+        statis.addCharacterChars(name, 0);
+        preCharater = name;
+      }
+    }
+  }
+
+  _processScene(bool doStatis, String sceneHeading) {
+    if (doStatis) {
+      final sceneMatch =
+          FountainConstants.regex['scene_heading']!.firstMatch(sceneHeading);
+
+      if (sceneMatch == null || sceneMatch.groupCount < 2) {
+        return;
+      }
+
+      // 处理场景类型和内景/外景标记
+      var locationText = sceneMatch.group(2) ?? '';
+      var isInterior = sceneHeading.toLowerCase().contains('int');
+      var isExterior = sceneHeading.toLowerCase().contains('ext');
+
+      // 处理中文场景标记
+      if (locationText.startsWith('(内景)') || locationText.startsWith('（内景）')) {
+        locationText = locationText.substring(4).trim();
+        isInterior = true;
+      } else if (locationText.startsWith('(外景)') ||
+          locationText.startsWith('（外景）')) {
+        locationText = locationText.substring(4).trim();
+        isExterior = true;
+      } else if (locationText.startsWith('(内外景)') ||
+          locationText.startsWith('（内外景）')) {
+        locationText = locationText.substring(5).trim();
+        isInterior = true;
+        isExterior = true;
+      }
+      if (isExterior) {
+        statis.addIntextsScenes('外景', 1);
+      }
+      if (isInterior) {
+        statis.addIntextsScenes('内景', 1);
+      }
+
+      // 分割地点和时间
+      final timeSplit = RegExp(r'[-–—−]').firstMatch(locationText);
+      var locationPart = timeSplit != null
+          ? locationText.substring(0, timeSplit.start).trim()
+          : locationText.trim();
+      final timePart = timeSplit != null
+          ? locationText.substring(timeSplit.end).trim().toLowerCase()
+          : '';
+
+      statis.addTimesScenes(timePart, 1);
+
+      // 分割多个地点名称并生成Location列表
+      var names = locationPart
+          .split('/')
+          .map((name) => name.trim())
+          .where((name) => name.isNotEmpty)
+          .toList();
+
+      // 遍历names
+      for (var name in names) {
+        statis.addLocationScenes(name, 1);
+      }
+    }
+  }
+
+  ParserOutput parse(bool doStatis, String text) {
     commentStarted = -1;
+    statis = Statis.empty();
 
     final elements = <FountainElement>[];
     final lines = text.split('\n');
@@ -107,28 +199,27 @@ class FountainParser {
     for (var line in lines) {
       final trimmedLine = line.trim();
       final length = line.length;
+      var statisDial = false; //是否需要统计对话字数，需要在减去评论字数之后
 
       if (commentStarted < 0) {
         //注解最优先
 
         if (!dialogueStarted &&
             lastLineWasEmpty &&
-            (trimmedLine.startsWith('@') ||
-                (trimmedLine.isNotEmpty &&
-                    trimmedLine == trimmedLine.toUpperCase() &&
-                    trimmedLine[0].toUpperCase() !=
-                        trimmedLine[0].toLowerCase()))) {
+            FountainConstants.regex['character']!.hasMatch(line)) {
           dialogueStarted = true;
           elements.add(FountainElement(
             'character',
             line,
             Range(offset, length),
           ));
+          _processCharater(doStatis, line);
         } else if (dialogueStarted) {
           //dialogue 永远最优先
           if (trimmedLine.isEmpty && length < 2) {
             dialogueStarted = false;
             parentheticalStarted = "";
+            preCharater = '';
           } else {
             if (parentheticalStarted.isNotEmpty) {
               elements.add(FountainElement(
@@ -165,6 +256,10 @@ class FountainParser {
                   line,
                   Range(offset, length),
                 ));
+                if (doStatis) {
+                  // 统计对话字数
+                  statisDial = true;
+                }
               }
             }
           }
@@ -172,24 +267,13 @@ class FountainParser {
         // 以下都是 非dialogueStarted 情况
         // 场景标题
         else if (lastLineWasEmpty &&
-            (trimmedLine.startsWith('.') ||
-                trimmedLine.toUpperCase().startsWith('INT.') ||
-                trimmedLine.toUpperCase().startsWith('EXT.') ||
-                trimmedLine.toUpperCase().startsWith('EST.') ||
-                trimmedLine.toUpperCase().startsWith('INT ') ||
-                trimmedLine.toUpperCase().startsWith('EXT ') ||
-                trimmedLine.toUpperCase().startsWith('EST ') ||
-                trimmedLine.toUpperCase().startsWith('INT./EXT.') ||
-                trimmedLine.toUpperCase().startsWith('INT./EXT ') ||
-                trimmedLine.toUpperCase().startsWith('INT/EXT.') ||
-                trimmedLine.toUpperCase().startsWith('INT/EXT ') ||
-                trimmedLine.toUpperCase().startsWith('I/E.') ||
-                trimmedLine.toUpperCase().startsWith('I/E '))) {
+            FountainConstants.regex['scene_heading']!.hasMatch(line)) {
           elements.add(FountainElement(
             'scene_heading',
             line,
             Range(offset, length),
           ));
+          _processScene(doStatis, line);
         } else if (trimmedLine.startsWith('>') && trimmedLine.endsWith('<')) {
           elements.add(FountainElement(
             'center',
@@ -209,6 +293,8 @@ class FountainParser {
         // 动作
         else if (trimmedLine.startsWith('!')) {
           dialogueStarted = false;
+          parentheticalStarted = "";
+          preCharater = '';
           elements.add(FountainElement(
             'action',
             line,
@@ -261,6 +347,10 @@ class FountainParser {
                 line,
                 Range(offset, length),
               ));
+              if (doStatis) {
+                // 统计对话字数
+                statisDial = true;
+              }
             }
           } else {
             elements.add(FountainElement(
@@ -280,15 +370,23 @@ class FountainParser {
           // 继承之前的 lastLineWasEmpty 值，不处理
         } else {
           lastLineWasEmpty = false;
+          if (statisDial) {
+            // 对话中有注解，减去注解的字数
+            statis.addCharacterChars(preCharater, cm.left.trim().length);
+          }
         }
       } else {
         // 本行没有任何注解
         lastLineWasEmpty = trimmedLine.isEmpty;
+        if (statisDial) {
+          // 对话中有注解，减去注解的字数
+          statis.addCharacterChars(preCharater, line.trim().length);
+        }
       }
 
       offset += length + 1; // +1 for newline
     }
 
-    return elements;
+    return ParserOutput(elements, statis);
   }
 }
