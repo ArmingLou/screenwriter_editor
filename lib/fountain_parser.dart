@@ -106,13 +106,13 @@ class FountainParser {
   }
 
   String trimCharacterName(String character) {
-    var t = character.replaceAll(RegExp(r'^[ \t]*(@)?',unicode: true), '').trim();
+    var t =
+        character.replaceAll(RegExp(r'^[ \t]*(@)?', unicode: true), '').trim();
     t = t
-        .replaceAll(RegExp(r'[ \t]*(\(.*\)|（.*）)[ \t]*([ \t]*\^$)?',unicode: true), '')
+        .replaceAll(
+            RegExp(r'[ \t]*(\(.*\)|（.*）)[ \t]*([ \t]*\^$)?', unicode: true), '')
         .trim();
-    t = t
-        .replaceAll(RegExp(r'[ \t]*\^$',unicode: true), '')
-        .trim();
+    t = t.replaceAll(RegExp(r'[ \t]*\^$', unicode: true), '').trim();
     return t;
   }
 
@@ -155,12 +155,6 @@ class FountainParser {
         isInterior = true;
         isExterior = true;
       }
-      if (isExterior) {
-        statis.addIntextsScenes('外景', 1);
-      }
-      if (isInterior) {
-        statis.addIntextsScenes('内景', 1);
-      }
 
       // 分割地点和时间
       final timeSplit = RegExp(r'[-–—−]').firstMatch(locationText);
@@ -170,8 +164,6 @@ class FountainParser {
       final timePart = timeSplit != null
           ? locationText.substring(timeSplit.end).trim().toLowerCase()
           : '';
-
-      statis.addTimesScenes(timePart, 1);
 
       // 分割多个地点名称并生成Location列表
       var names = locationPart
@@ -183,6 +175,25 @@ class FountainParser {
       // 遍历names
       for (var name in names) {
         statis.addLocationScenes(name, 1);
+        if (timePart.isNotEmpty) {
+          statis.addTimesScenes(timePart, 1);
+        } else {
+          // 如果没有时间信息，添加一个默认的时间
+          statis.addTimesScenes('未确定', 1);
+        }
+        if (isExterior && isInterior) {
+          if (names.length > 1) {
+            statis.addIntextsScenes('未确定', 1);
+          } else {
+            statis.addIntextsScenes('内外景', 1);
+          }
+        } else if (isExterior) {
+          statis.addIntextsScenes('外景', 1);
+        } else if (isInterior) {
+          statis.addIntextsScenes('内景', 1);
+        } else {
+          statis.addIntextsScenes('未确定', 1);
+        }
       }
     }
   }
@@ -315,8 +326,7 @@ class FountainParser {
             line,
             Range(offset, length),
           ));
-        } else if (
-            lastLineWasEmpty &&
+        } else if (lastLineWasEmpty &&
             FountainConstants.regex['character']!.hasMatch(line)) {
           dialogueStarted = true;
           elements.add(FountainElement(
