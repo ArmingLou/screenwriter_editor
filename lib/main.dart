@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:path/path.dart' as path;
 import 'package:screenwriter_editor/statis.dart';
+import 'package:screenwriter_editor/stats_page.dart';
 import 'fountain_parser.dart';
 import 'package:intl/intl.dart';
 import 'package:percent_indicator/percent_indicator.dart';
@@ -218,7 +219,7 @@ class _EditorScreenState extends State<EditorScreen> {
         final parser = FountainParser();
         return parser.parse(false, text);
       },
-      { 'text': visibleText},
+      {'text': visibleText},
     );
     RT:
     for (final element in parsed.elements) {
@@ -267,7 +268,7 @@ class _EditorScreenState extends State<EditorScreen> {
         final parser = FountainParser();
         return parser.parse(true, text);
       },
-      { 'text': fullText},
+      {'text': fullText},
     );
 
     statisGlobal = parsed.statis;
@@ -1019,6 +1020,22 @@ class _EditorScreenState extends State<EditorScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  IconButton(
+                    icon: Icon(Icons.bar_chart, size: 18),
+                    onPressed: () {
+                      if (statisGlobal != null) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                StatsPage(statis: statisGlobal!),
+                          ),
+                        );
+                      }
+                    },
+                    padding: EdgeInsets.zero,
+                    constraints: BoxConstraints(),
+                  ),
                   ValueListenableBuilder<String>(
                     valueListenable: _stateBarMsgNotifier,
                     builder: (context, msg, _) {
