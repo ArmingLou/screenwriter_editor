@@ -106,9 +106,12 @@ class FountainParser {
   }
 
   String trimCharacterName(String character) {
-    var t = character.replaceAll(RegExp(r'^[ \t]*(@)?'), '').trim();
+    var t = character.replaceAll(RegExp(r'^[ \t]*(@)?',unicode: true), '').trim();
     t = t
-        .replaceAll(RegExp(r'[ \t]*(\(.*\)|（.*）)[ \t]*([ \t]*\^)?$'), '')
+        .replaceAll(RegExp(r'[ \t]*(\(.*\)|（.*）)[ \t]*([ \t]*\^$)?',unicode: true), '')
+        .trim();
+    t = t
+        .replaceAll(RegExp(r'[ \t]*\^$',unicode: true), '')
         .trim();
     return t;
   }
