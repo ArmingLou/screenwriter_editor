@@ -204,17 +204,7 @@ class FountainParser {
       if (commentStarted < 0) {
         //注解最优先
 
-        if (!dialogueStarted &&
-            lastLineWasEmpty &&
-            FountainConstants.regex['character']!.hasMatch(line)) {
-          dialogueStarted = true;
-          elements.add(FountainElement(
-            'character',
-            line,
-            Range(offset, length),
-          ));
-          _processCharater(doStatis, line);
-        } else if (dialogueStarted) {
+        if (dialogueStarted) {
           //dialogue 永远最优先
           if (trimmedLine.isEmpty && length < 2) {
             dialogueStarted = false;
@@ -274,16 +264,14 @@ class FountainParser {
             Range(offset, length),
           ));
           _processScene(doStatis, line);
-        } else if (trimmedLine.startsWith('>') && trimmedLine.endsWith('<')) {
+        } else if (FountainConstants.regex['centered']!.hasMatch(line)) {
           elements.add(FountainElement(
             'center',
             line,
             Range(offset, length),
           ));
         } else if (lastLineWasEmpty &&
-            (trimmedLine.startsWith('>') ||
-                (trimmedLine == trimmedLine.toUpperCase() &&
-                    trimmedLine.endsWith("TO:")))) {
+            FountainConstants.regex['transition']!.hasMatch(line)) {
           elements.add(FountainElement(
             'transition',
             line,
@@ -291,7 +279,7 @@ class FountainParser {
           ));
         }
         // 动作
-        else if (trimmedLine.startsWith('!')) {
+        else if (FountainConstants.blockRegex['action_force']!.hasMatch(line)) {
           dialogueStarted = false;
           parentheticalStarted = "";
           preCharater = '';
@@ -300,30 +288,40 @@ class FountainParser {
             line,
             Range(offset, length),
           ));
-        } else if (trimmedLine.startsWith('#')) {
+        } else if (FountainConstants.regex['section']!.hasMatch(line)) {
           elements.add(FountainElement(
             'sections',
             line,
             Range(offset, length),
           ));
-        } else if (trimmedLine.startsWith('===')) {
+        } else if (FountainConstants.regex['page_break']!.hasMatch(line)) {
           elements.add(FountainElement(
             'page_breaks',
             line,
             Range(offset, length),
           ));
-        } else if (trimmedLine.startsWith('=')) {
+        } else if (FountainConstants.regex['synopsis']!.hasMatch(line)) {
           elements.add(FountainElement(
             'synopses',
             line,
             Range(offset, length),
           ));
-        } else if (trimmedLine.startsWith('~')) {
+        } else if (FountainConstants.regex['lyric']!.hasMatch(line)) {
           elements.add(FountainElement(
             'lyrics',
             line,
             Range(offset, length),
           ));
+        } else if (
+            lastLineWasEmpty &&
+            FountainConstants.regex['character']!.hasMatch(line)) {
+          dialogueStarted = true;
+          elements.add(FountainElement(
+            'character',
+            line,
+            Range(offset, length),
+          ));
+          _processCharater(doStatis, line);
         } else if (trimmedLine.isNotEmpty) {
           elements.add(FountainElement(
             'action',

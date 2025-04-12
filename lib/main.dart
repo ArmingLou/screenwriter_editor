@@ -254,7 +254,7 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
     _lastFormatingFullTime = thisFormatFullTime;
-    _stateBarMsgNotifier.value = '(语法刷新中...)'; //状态栏显示状态。
+    _stateBarMsgNotifier.value = '语法刷新中...'; //状态栏显示状态。
 
     // final selection = _quillController.selection;
     final fullText = _quillController.document.toPlainText();
