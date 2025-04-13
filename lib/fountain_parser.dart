@@ -121,7 +121,7 @@ class FountainParser {
       final match = FountainConstants.regex['character']!.firstMatch(text);
       if (match != null) {
         var name = trimCharacterName(text);
-        statis.addCharacterChars(name, 0);
+        // statis.addCharacterChars(name, 0);
         preCharater = name;
       }
     }
