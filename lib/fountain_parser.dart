@@ -206,6 +206,8 @@ class FountainParser {
     var dialogueStarted = false;
     var parentheticalStarted = "";
     var lastLineWasEmpty = true;
+    
+    var fisrtScencStarted = false;
 
     for (var line in lines) {
       final trimmedLine = line.trim();
@@ -257,7 +259,7 @@ class FountainParser {
                   line,
                   Range(offset, length),
                 ));
-                if (doStatis) {
+                if (doStatis && fisrtScencStarted) {
                   // 统计对话字数
                   statisDial = true;
                 }
@@ -275,6 +277,7 @@ class FountainParser {
             Range(offset, length),
           ));
           _processScene(doStatis, line);
+          fisrtScencStarted = true;
         } else if (FountainConstants.regex['centered']!.hasMatch(line)) {
           elements.add(FountainElement(
             'center',
@@ -355,7 +358,7 @@ class FountainParser {
                 line,
                 Range(offset, length),
               ));
-              if (doStatis) {
+              if (doStatis && fisrtScencStarted) {
                 // 统计对话字数
                 statisDial = true;
               }

@@ -1122,7 +1122,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   ),
                   Padding(
                     //左边添加8像素补白
-                    padding: EdgeInsets.only(left: 0),
+                    padding: EdgeInsets.only(left: 5),
                     child: Text(
                       '字数:',
                       style: const TextStyle(fontSize: 12),
