@@ -179,11 +179,11 @@ class FountainParser {
           statis.addTimesScenes(timePart, 1);
         } else {
           // 如果没有时间信息，添加一个默认的时间
-          statis.addTimesScenes('未确定', 1);
+          statis.addTimesScenes('不确定', 1);
         }
         if (isExterior && isInterior) {
           if (names.length > 1) {
-            statis.addIntextsScenes('未确定', 1);
+            statis.addIntextsScenes('不确定', 1);
           } else {
             statis.addIntextsScenes('内外景', 1);
           }
@@ -192,7 +192,7 @@ class FountainParser {
         } else if (isInterior) {
           statis.addIntextsScenes('内景', 1);
         } else {
-          statis.addIntextsScenes('未确定', 1);
+          statis.addIntextsScenes('不确定', 1);
         }
       }
     }

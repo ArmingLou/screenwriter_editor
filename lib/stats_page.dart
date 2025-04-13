@@ -34,7 +34,7 @@ class StatsPage extends StatelessWidget {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            Text(title, style: Theme.of(context).textTheme.titleLarge),
+            Text(title, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             SizedBox(
               height: h,
@@ -64,10 +64,10 @@ class StatsPage extends StatelessWidget {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            _buildChart(statis.characters, '角色对白字数统计', context),
-            _buildChart(statis.locations, '地点场次统计', context),
-            _buildChart(statis.intexts, '内外景场次统计', context),
-            _buildChart(statis.times, '时分场次统计', context),
+            _buildChart(statis.characters, '角色-对白字数 统计', context),
+            _buildChart(statis.locations, '地点-场次 统计', context),
+            _buildChart(statis.intexts, '内外景-场次 统计', context),
+            _buildChart(statis.times, '时分-场次 统计', context),
           ],
         ),
       ),

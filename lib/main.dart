@@ -62,6 +62,8 @@ class _EditorScreenState extends State<EditorScreen> {
   final ValueNotifier<List<int>> _charsLenNotifier =
       ValueNotifier<List<int>>([0, 0]);
   final ValueNotifier<String> _stateBarMsgNotifier = ValueNotifier<String>("");
+  final ValueNotifier<Statis?> _stateStatisNotifier =
+      ValueNotifier<Statis?>(null);
   final TextEditingController _titleEditingController = TextEditingController();
   final ScrollController _titleScrollController = ScrollController();
   late final QuillController _quillController;
@@ -77,7 +79,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
   final double _sliderWidth = 180;
 
-  Statis? statisGlobal;
+  // Statis? statisGlobal;
 
   int _lastSelection = -1;
 
@@ -254,11 +256,11 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
     _lastFormatingFullTime = thisFormatFullTime;
-    _stateBarMsgNotifier.value = '语法刷新中...'; //状态栏显示状态。
+    _stateBarMsgNotifier.value = '全文语法样式刷新中...'; //状态栏显示状态。
 
     // final selection = _quillController.selection;
     final fullText = _quillController.document.toPlainText();
-    statisGlobal = null;
+    _stateStatisNotifier.value = null;
 
     // 解析并格式化可见文本
     // final parsed = await compute(_parseText, fullText);
@@ -271,14 +273,17 @@ class _EditorScreenState extends State<EditorScreen> {
       {'text': fullText},
     );
 
-    statisGlobal = parsed.statis;
+    _stateStatisNotifier.value = parsed.statis;
     // var count = 0;
 
     bool wasBreak = false;
 
     fisrtScencStarted = false;
+    _charsPerMinu = 243.22;
     // int tempStartChars = 0;
 
+    var i = 0;
+    final tot = parsed.elements.length;
     RTF:
     for (final element in parsed.elements) {
       if (!fisrtScencStarted && thisFormatFullTime == _lastFormatingFullTime) {
@@ -328,6 +333,17 @@ class _EditorScreenState extends State<EditorScreen> {
             await Future.delayed(const Duration(milliseconds: 2));
           }
         }
+      }
+
+      i++;
+      var progress = '';
+      if (i >= tot) {
+        progress = '100%';
+      } else {
+        progress = '${(i / tot * 100).toStringAsFixed(0)}%';
+      }
+      if (!_stateBarMsgNotifier.value.startsWith('打开文件')) {
+        _stateBarMsgNotifier.value = '全文语法样式刷新中... ($progress)';
       }
     }
 
@@ -555,37 +571,50 @@ class _EditorScreenState extends State<EditorScreen> {
             throw Exception('文件不存在或无法访问');
           }
 
-          // 读取文件内容
-          // String content = await File(filePath).readAsString();
-          String content = await File(file.path!).readAsString();
-          // final delta = Delta()..insert('$content\n');
-          // _quillController.clear();
-          _quillController.replaceText(0, _quillController.document.length - 1,
-              '$content', const TextSelection.collapsed(offset: 0));
+          _stateBarMsgNotifier.value = '打开文件中...($filePath)'; //状态栏显示状态。
 
-          int total = _quillController.document.length - 1;
-          if (total < 0) total = 0;
-          _charsLenNotifier.value = [
-            _quillController.selection.baseOffset,
-            total
-          ]; //更新状态光标偏移统计；
+          Future.delayed(const Duration(milliseconds: 5), () async {
+            try {
+              // 读取文件内容
+              // String content = await File(filePath).readAsString();
+              String content = await File(file.path!).readAsString();
+              // final delta = Delta()..insert('$content\n');
+              // _quillController.clear();
+              _quillController.replaceText(
+                  0,
+                  _quillController.document.length - 1,
+                  '$content',
+                  const TextSelection.collapsed(offset: 0));
 
-          FilePicker.platform.clearTemporaryFiles();
+              int total = _quillController.document.length - 1;
+              if (total < 0) total = 0;
+              _charsLenNotifier.value = [
+                _quillController.selection.baseOffset,
+                total
+              ]; //更新状态光标偏移统计；
 
-          // 更新当前文件路径
-          // setState(() {
-          // _currentFilePath = filePath!;
-          // });
-          _titleEditingController.text = filePath;
-          // 在下一次ui刷新后再执行
-          Future.delayed(const Duration(milliseconds: 500), () {
-            _titleScrollController
-                .jumpTo(_titleScrollController.position.maxScrollExtent);
+              FilePicker.platform.clearTemporaryFiles();
+
+              // 更新当前文件路径
+              // setState(() {
+              // _currentFilePath = filePath!;
+              // });
+              _titleEditingController.text = filePath!;
+              // 在下一次ui刷新后再执行
+              Future.delayed(const Duration(milliseconds: 500), () {
+                _titleScrollController
+                    .jumpTo(_titleScrollController.position.maxScrollExtent);
+              });
+              Future.delayed(const Duration(milliseconds: 2), () {
+                // 触发格式更新
+                // addFormatTask();//部分格式
+                formatFullText(); //全文格式
+              });
+            } catch (e) {
+              _showError('打开文件失败: $e');
+              _stateBarMsgNotifier.value = ''; //恢复0，为状态栏显示状态。
+            }
           });
-
-          // 触发格式更新
-          // addFormatTask();//部分格式
-          formatFullText(); //全文格式
         } else {
           _showError('请选择.fountain文件');
         }
@@ -1013,6 +1042,36 @@ class _EditorScreenState extends State<EditorScreen> {
                 ),
               ),
             ),
+            ValueListenableBuilder<String>(
+              valueListenable: _stateBarMsgNotifier,
+              builder: (context, msg, _) {
+                if (msg.isEmpty) {
+                  // 返回空白：
+                  return SizedBox.shrink();
+                } else {
+                  return Container(
+                    height: 20,
+                    color: Color.fromARGB(255, 245, 119, 65),
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            softWrap: false,
+                            overflow: TextOverflow.ellipsis,
+                            msg,
+                            style: const TextStyle(
+                                fontSize: 12,
+                                color: Color.fromARGB(255, 255, 255, 255)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+              },
+            ),
             Container(
               height: 24,
               color: Color.fromARGB(255, 210, 210, 210),
@@ -1020,36 +1079,27 @@ class _EditorScreenState extends State<EditorScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Expanded(
-                    child: ValueListenableBuilder<String>(
-                      valueListenable: _stateBarMsgNotifier,
-                      builder: (context, msg, _) {
-                        return Text(
-                          softWrap: false,
-                          overflow: TextOverflow.ellipsis,
-                          msg,
-                          style: const TextStyle(
-                              fontSize: 12,
-                              color: Color.fromARGB(255, 201, 79, 60)),
-                        );
-                      },
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.bar_chart, size: 18),
-                    onPressed: () {
-                      if (statisGlobal != null) {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                StatsPage(statis: statisGlobal!),
-                          ),
+                  ValueListenableBuilder<Statis?>(
+                    valueListenable: _stateStatisNotifier,
+                    builder: (context, statis, _) {
+                      if (statis == null) {
+                        return SizedBox.shrink();
+                      } else {
+                        return IconButton(
+                          icon: Icon(Icons.bar_chart, size: 18),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => StatsPage(statis: statis),
+                              ),
+                            );
+                          },
+                          padding: EdgeInsets.zero,
+                          constraints: BoxConstraints(),
                         );
                       }
                     },
-                    padding: EdgeInsets.zero,
-                    constraints: BoxConstraints(),
                   ),
                   Padding(
                     //左边添加8像素补白
