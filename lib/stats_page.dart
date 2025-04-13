@@ -1,3 +1,5 @@
+import 'dart:ffi';
+
 import 'package:flutter/material.dart';
 import 'package:screenwriter_editor/statis.dart';
 // import 'package:fl_chart/fl_chart.dart';
@@ -5,11 +7,13 @@ import 'package:fast_charts/fast_charts.dart';
 
 class StatsPage extends StatelessWidget {
   final Statis statis;
+  final double dialCharsPerMinu;
 
-  const StatsPage({super.key, required this.statis});
+  const StatsPage(
+      {super.key, required this.statis, this.dialCharsPerMinu = 171});
 
-  Widget _buildChart(
-      Map<String, int> data, String title, BuildContext context) {
+  Widget _buildChart(Map<String, int> data, String title, bool charsTime,
+      BuildContext context) {
     // final number = NumberFormat.compact(locale: 'ru');
     final sorted = data.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
@@ -20,15 +24,29 @@ class StatsPage extends StatelessWidget {
         data: {entry.key: entry.value},
         colorAccessor: (domain, value) => Colors.blue,
         measureAccessor: (value) => value.toDouble(),
-        labelAccessor: (domain, value, percent) => ChartLabel(
-          value.toString(),
-          style: TextStyle(fontSize: 10),
-        ),
+        labelAccessor: (domain, value, percent) {
+          var lb = value.toString();
+          if (charsTime && value > 0) {
+            double currMinu = value / dialCharsPerMinu;
+            if (currMinu > 1) {
+              int currM = currMinu.toInt();
+              lb = "$lb [$currM’]";
+            } else {
+              int currSeconds = (currMinu * 60).toInt();
+              int currS = currSeconds % 60;
+              lb = "$lb [$currS”]";
+            }
+          }
+          return ChartLabel(
+            lb,
+            style: TextStyle(fontSize: 10),
+          );
+        },
       );
     }).toList();
     // height:
     final h = 25 * _data.length.toDouble() + 25;
-    
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -64,10 +82,10 @@ class StatsPage extends StatelessWidget {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            _buildChart(statis.characters, '角色-对白字数 统计', context),
-            _buildChart(statis.locations, '地点-场次 统计', context),
-            _buildChart(statis.intexts, '内外景-场次 统计', context),
-            _buildChart(statis.times, '时分-场次 统计', context),
+            _buildChart(statis.characters, '角色-对白字数 统计', true, context),
+            _buildChart(statis.locations, '地点-场次 统计', false, context),
+            _buildChart(statis.intexts, '内外景-场次 统计', false, context),
+            _buildChart(statis.times, '时分-场次 统计', false, context),
           ],
         ),
       ),

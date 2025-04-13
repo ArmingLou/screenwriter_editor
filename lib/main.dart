@@ -86,7 +86,8 @@ class _EditorScreenState extends State<EditorScreen> {
   int _lastFormatingFullTime = 0;
   int _lastTapSliderTime = 0;
   int _startChars = 0; //第一个场景之前的字数，作用是预估时间需要减去。
-  double _charsPerMinu = 243.22; //按每分钟多少个字预估。
+  double _charsPerMinu = 243.22; //按每分钟多少个字预估， （全文，不区分对白）。
+  double _dialCharsPerMinu = 171; //按每分钟多少个字预估, （只针对 对白）。
   bool fisrtScencStarted = false;
   // 获取可见区域文本
   Future<void> formatText(int index, int len, Attribute? attribute,
@@ -280,6 +281,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
     fisrtScencStarted = false;
     _charsPerMinu = 243.22;
+    _dialCharsPerMinu = 171; 
     // int tempStartChars = 0;
 
     var i = 0;
@@ -306,6 +308,20 @@ class _EditorScreenState extends State<EditorScreen> {
               } else if (j == -1) {
                 v = s.substring(s.indexOf(':') + 1);
                 _charsPerMinu = double.parse(v.trim());
+              }
+            }
+            // 简单地从metadata中找到 对白每分钟多少个字的配置。前提是这个json配置的字段，格式上要单独一行。
+            int ii = element.text.indexOf('"dial_chars_per_minu"');
+            if (ii > 0) {
+              String s = element.text.substring(ii + 21);
+              int jj = s.indexOf(',');
+              String v = '';
+              if (jj > 1) {
+                v = s.substring(s.indexOf(':') + 1, jj);
+                _dialCharsPerMinu = double.parse(v.trim());
+              } else if (jj == -1) {
+                v = s.substring(s.indexOf(':') + 1);
+                _dialCharsPerMinu = double.parse(v.trim());
               }
             }
           }
@@ -1091,7 +1107,10 @@ class _EditorScreenState extends State<EditorScreen> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => StatsPage(statis: statis),
+                                builder: (context) => StatsPage(
+                                  statis: statis,
+                                  charsPerMinu: _dialCharsPerMinu,
+                                ),
                               ),
                             );
                           },
