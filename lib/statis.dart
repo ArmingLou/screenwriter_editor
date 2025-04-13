@@ -3,12 +3,14 @@ class Statis {
   final Map<String, int> locations;
   final Map<String, int> times;
   final Map<String, int> intexts;
+  final Map<String, Map<String, int>> locationsTime;
 
   Statis({
     required this.characters,
     required this.locations,
     required this.times,
     required this.intexts,
+    required this.locationsTime,
   });
 
   factory Statis.empty() {
@@ -17,6 +19,7 @@ class Statis {
       locations: {},
       times: {},
       intexts: {},
+      locationsTime: {},
     );
   }
 
@@ -39,6 +42,7 @@ class Statis {
       }
     }
   }
+
   void addTimesScenes(String name, int scenes) {
     if (name.isNotEmpty) {
       if (times.containsKey(name)) {
@@ -48,12 +52,31 @@ class Statis {
       }
     }
   }
+
   void addIntextsScenes(String name, int scenes) {
     if (name.isNotEmpty) {
       if (intexts.containsKey(name)) {
         intexts[name] = intexts[name]! + scenes;
       } else {
         intexts[name] = scenes;
+      }
+    }
+  }
+
+  void addLocationTimeScenes(String name, String time, int scenes) {
+    if (name.isNotEmpty) {
+      if (locationsTime.containsKey(name)) {
+        if (locationsTime[name]!.containsKey(time)) {
+          locationsTime[name]![time] = locationsTime[name]![time]! + scenes;
+        } else {
+          if (time.isNotEmpty) {
+            locationsTime[name]![time] = scenes;
+          }
+        }
+      } else {
+        if (time.isNotEmpty) {
+          locationsTime[name] = {time: scenes};
+        }
       }
     }
   }

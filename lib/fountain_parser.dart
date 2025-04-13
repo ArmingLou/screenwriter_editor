@@ -174,13 +174,10 @@ class FountainParser {
 
       // 遍历names
       for (var name in names) {
+        var tp = timePart.isNotEmpty ? timePart : '不确定';
+        statis.addTimesScenes(tp, 1);
         statis.addLocationScenes(name, 1);
-        if (timePart.isNotEmpty) {
-          statis.addTimesScenes(timePart, 1);
-        } else {
-          // 如果没有时间信息，添加一个默认的时间
-          statis.addTimesScenes('不确定', 1);
-        }
+        statis.addLocationTimeScenes(name, tp, 1);
         if (isExterior && isInterior) {
           if (names.length > 1) {
             statis.addIntextsScenes('不确定', 1);
