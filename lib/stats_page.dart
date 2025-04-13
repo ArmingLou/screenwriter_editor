@@ -102,6 +102,10 @@ class StatsPage extends StatelessWidget {
         str.toLowerCase().contains('dusk')) {
       return const Color.fromARGB(255, 183, 65, 207);
     }
+    if (str.contains('不确定') ||
+        str.toLowerCase().contains('other')) {
+      return const Color.fromARGB(255, 10, 34, 6);
+    }
     int hash = str.hashCode;
     return Color((hash & 0xFFFFFF) + 0xFF000000);
   }
