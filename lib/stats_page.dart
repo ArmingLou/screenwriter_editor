@@ -13,7 +13,7 @@ class StatsPage extends StatelessWidget {
       {super.key, required this.statis, this.dialCharsPerMinu = 171});
 
   Widget _buildChart(Map<String, int> data, String title, bool charsTime,
-      BuildContext context) {
+      bool colorName, BuildContext context) {
     // final number = NumberFormat.compact(locale: 'ru');
     final sorted = data.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
@@ -22,7 +22,8 @@ class StatsPage extends StatelessWidget {
     final _data = sorted.map((entry) {
       return Series(
         data: {entry.key: entry.value},
-        colorAccessor: (domain, value) => Colors.blue,
+        colorAccessor: (domain, value) =>
+            colorName ? getColor(entry.key) : Colors.blue,
         measureAccessor: (value) => value.toDouble(),
         labelAccessor: (domain, value, percent) {
           var lb = value.toString();
@@ -102,8 +103,7 @@ class StatsPage extends StatelessWidget {
         str.toLowerCase().contains('dusk')) {
       return const Color.fromARGB(255, 183, 65, 207);
     }
-    if (str.contains('不确定') ||
-        str.toLowerCase().contains('other')) {
+    if (str.contains('不确定') || str.toLowerCase().contains('other')) {
       return const Color.fromARGB(255, 209, 210, 209);
     }
     int hash = str.hashCode;
@@ -218,10 +218,10 @@ class StatsPage extends StatelessWidget {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            _buildChart(statis.characters, '角色-对白字数 统计', true, context),
+            _buildChart(statis.characters, '角色-对白字数 统计', true, false, context),
             _buildStackChart(statis.locationsTime, '地点-场次 统计', false, context),
-            _buildChart(statis.intexts, '内外景-场次 统计', false, context),
-            _buildChart(statis.times, '时分-场次 统计', false, context),
+            _buildChart(statis.times, '时分-场次 统计', false, true, context),
+            _buildChart(statis.intexts, '内外景-场次 统计', false, false, context),
           ],
         ),
       ),
