@@ -104,7 +104,7 @@ class StatsPage extends StatelessWidget {
     }
     if (str.contains('不确定') ||
         str.toLowerCase().contains('other')) {
-      return const Color.fromARGB(255, 10, 34, 6);
+      return const Color.fromARGB(255, 209, 210, 209);
     }
     int hash = str.hashCode;
     return Color((hash & 0xFFFFFF) + 0xFF000000);
