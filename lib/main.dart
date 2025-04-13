@@ -1109,7 +1109,7 @@ class _EditorScreenState extends State<EditorScreen> {
                               MaterialPageRoute(
                                 builder: (context) => StatsPage(
                                   statis: statis,
-                                  charsPerMinu: _dialCharsPerMinu,
+                                  dialCharsPerMinu: _dialCharsPerMinu,
                                 ),
                               ),
                             );
