@@ -77,19 +77,29 @@ class StatsPage extends StatelessWidget {
 
   //通过字符串hash值获取颜色
   Color getColor(String str) {
-    if (str.contains('日') || str.contains('白天') || str.toLowerCase().contains('day')) {
-      return const Color.fromARGB(255, 249, 91, 91); 
+    if (str.contains('日') ||
+        str.contains('白天') ||
+        str.toLowerCase().contains('day')) {
+      return const Color.fromARGB(255, 249, 91, 91);
     }
-    if (str.contains('夜') || str.contains('晚上') || str.toLowerCase().contains('night')) {
+    if (str.contains('夜') ||
+        str.contains('晚上') ||
+        str.toLowerCase() == 'night') {
       return const Color.fromARGB(255, 69, 68, 153);
     }
-    if (str.contains('黎明') || str.contains('拂晓') || str.toLowerCase().contains('dawn')) {
+    if (str.contains('黎明') ||
+        str.contains('拂晓') ||
+        str.toLowerCase().contains('dawn')) {
       return const Color.fromARGB(255, 98, 56, 43);
     }
-    if (str.contains('清晨') || str.contains('早晨') ||str.toLowerCase().contains('morning')) {
+    if (str.contains('清晨') ||
+        str.contains('早晨') ||
+        str.toLowerCase().contains('morning')) {
       return const Color.fromARGB(255, 247, 171, 100);
     }
-    if (str.contains('黄昏') || str.contains('傍晚') || str.toLowerCase().contains('dusk')) {
+    if (str.contains('黄昏') ||
+        str.contains('傍晚') ||
+        str.toLowerCase().contains('dusk')) {
       return const Color.fromARGB(255, 183, 65, 207);
     }
     int hash = str.hashCode;
