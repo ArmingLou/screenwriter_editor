@@ -80,7 +80,11 @@ class _EditorScreenState extends State<EditorScreen> {
   final double _sliderWidth = 180;
 
   // 控制工具栏显示/隐藏的状态变量
-  bool _showToolbar = false;
+  bool _editable = false;
+  bool _historyRollback = false;
+  bool _docChanged = false;
+  bool _openNewDocWaitDeleteNotify = false;
+  bool _openNewDocWaitInsertNotify = false;
 
   // 光标移动定时器
   Timer? _backwardTimer;
@@ -227,12 +231,37 @@ class _EditorScreenState extends State<EditorScreen> {
   // 获取可见区域文本
   Future<void> formatText(int index, int len, Attribute? attribute,
       bool shouldNotifyListeners) async {
+    // 清理 撤销/重做历史中，修改样式的 变化 历史记录，只保留插入或者删除的记录
+    // 创建一个新列表，存储需要保留的元素
+    final undoToKeep = _quillController.document.history.stack.undo
+        .where((element) => element.last.isDelete || element.last.isInsert)
+        .toList();
+
+    // 同样处理 redo 列表
+    final redoToKeep = _quillController.document.history.stack.redo
+        .where((element) => element.last.isDelete || element.last.isInsert)
+        .toList();
+
     _quillController.formatText(
       index,
       len,
       attribute,
       shouldNotifyListeners: shouldNotifyListeners,
     );
+
+    // 清空原列表
+    _quillController.document.history.stack.undo.clear();
+
+    // 添加需要保留的元素
+    _quillController.document.history.stack.undo.addAll(undoToKeep);
+
+    // 清空原列表
+    _quillController.document.history.stack.redo.clear();
+
+    // 添加需要保留的元素
+    _quillController.document.history.stack.redo.addAll(redoToKeep);
+
+    // _fixDocHistory();
   }
 
   // 获取可见区域文本，基于光标位置的一个有限范围进行。
@@ -441,6 +470,31 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
+  void _fixDocHistory() {
+    // 清理 撤销/重做历史中，修改样式的 变化 历史记录，只保留插入或者删除的记录
+    // 创建一个新列表，存储需要保留的元素
+    final undoToKeep = _quillController.document.history.stack.undo
+        .where((element) => element.last.isDelete || element.last.isInsert)
+        .toList();
+
+    // 清空原列表
+    _quillController.document.history.stack.undo.clear();
+
+    // 添加需要保留的元素
+    _quillController.document.history.stack.undo.addAll(undoToKeep);
+
+    // 同样处理 redo 列表
+    final redoToKeep = _quillController.document.history.stack.redo
+        .where((element) => element.last.isDelete || element.last.isInsert)
+        .toList();
+
+    // 清空原列表
+    _quillController.document.history.stack.redo.clear();
+
+    // 添加需要保留的元素
+    _quillController.document.history.stack.redo.addAll(redoToKeep);
+  }
+
   void _setupFormatListener() {
     // 监听文档变化
     _quillController.document.changes.listen((change) {
@@ -448,6 +502,34 @@ class _EditorScreenState extends State<EditorScreen> {
           (change.change.last.key != 'insert' &&
               change.change.last.key != 'delete')) {
         return;
+      }
+
+      if (_openNewDocWaitInsertNotify || _openNewDocWaitDeleteNotify) {
+        // 加载新文档
+        if (change.change.last.key == 'insert') {
+          _openNewDocWaitInsertNotify = false;
+        } else if (change.change.last.key == 'delete') {
+          _openNewDocWaitDeleteNotify = false;
+        }
+        return;
+      }
+
+      setState(() {
+        _docChanged = _quillController.document.hasRedo ||
+            _quillController.document.hasUndo;
+      });
+
+      if (!_editable) {
+        // 实现编辑内容回滚，间接实现只读。
+        if (_historyRollback) {
+          _historyRollback = false;
+          return;
+        } else {
+          _historyRollback = true;
+          _quillController.document.undo();
+          _quillController.document.history.stack.redo.removeLast();
+          return;
+        }
       }
       parseFullTextAndStatis("edit", () {
         if (_onlyEditRefresh) {
@@ -546,7 +628,7 @@ class _EditorScreenState extends State<EditorScreen> {
     );
 
     // 设置初始的只读状态，与工具栏状态一致
-    // _quillController.readOnly = !_showToolbar;
+    // _quillController.readOnly = !_editable;
 
     _setupFormatListener();
   }
@@ -625,6 +707,11 @@ class _EditorScreenState extends State<EditorScreen> {
               String content = await File(file.path!).readAsString();
               // final delta = Delta()..insert('$content\n');
               // _quillController.clear();
+
+              _openNewDocWaitInsertNotify = true; // 等待回调， 一个 insert
+              if (!_quillController.document.isEmpty()) {
+                _openNewDocWaitDeleteNotify = true;
+              }
               _quillController.replaceText(
                   0,
                   _quillController.document.length - 1,
@@ -637,6 +724,7 @@ class _EditorScreenState extends State<EditorScreen> {
                 _quillController.selection.baseOffset,
                 total
               ]; //更新状态光标偏移统计；
+              _quillController.document.history.clear();
 
               FilePicker.platform.clearTemporaryFiles();
 
@@ -655,11 +743,13 @@ class _EditorScreenState extends State<EditorScreen> {
                 // addFormatTask();//部分格式
                 formatFullText(); //全文格式
               });
-              // setState(() {
-              //   // 更新编辑器的只读状态
-              //   _showToolbar = false;
-              //   // _quillController.readOnly = true;
-              // });
+              setState(() {
+                // 更新编辑器的只读状态
+                _editable = false;
+                _docChanged = false;
+                _historyRollback = false;
+                // _quillController.readOnly = true;
+              });
             } catch (e) {
               _showError('打开文件失败: $e');
               _stateBarMsgNotifier.value = ''; //恢复0，为状态栏显示状态。
@@ -907,6 +997,10 @@ class _EditorScreenState extends State<EditorScreen> {
           ),
         );
       }
+      _quillController.document.history.clear();
+      setState(() {
+        _docChanged = false;
+      });
     } catch (e) {
       if (mounted) {
         _showError('保存文件失败: $e');
@@ -1287,297 +1381,385 @@ Metadata: {
     final buttonConstraints =
         BoxConstraints.tightFor(width: buttonWidth, height: 30.0);
 
-    return Container(
-      height: 30, // 进一步减小工具栏高度
-      color: const Color.fromARGB(255, 240, 240, 240),
-      padding: const EdgeInsets.symmetric(horizontal: 0), // 移除水平内边距
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween, // 两端对齐
-        children: [
-          // 左侧下拉菜单按钮组
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal, // 水平滚动
-              physics: const BouncingScrollPhysics(), // 滚动物理效果
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.start, // 左对齐，便于滚动
-                crossAxisAlignment: CrossAxisAlignment.center, // 垂直居中
-                mainAxisSize: MainAxisSize.min, // 根据子组件确定大小
-                children: [
-                  // 添加小间距，作为左侧的空白
-                  const SizedBox(width: 4),
-                  // 场景标记按钮
-                  Builder(
-                    builder: (context) => IconButton(
-                      icon: Icon(Icons.movie, size: iconSize),
-                      tooltip: '场景标记',
-                      onPressed: () {
-                        _showDropdownMenu(context, autoCompleteScene, '场景标记');
-                      },
-                      padding: EdgeInsets.all(buttonPadding),
-                      constraints: buttonConstraints,
-                      visualDensity: VisualDensity.compact,
-                      splashRadius: 16.0,
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      Container(
+        height: 30, // 进一步减小工具栏高度
+        color: const Color.fromARGB(255, 240, 240, 240),
+        padding: const EdgeInsets.symmetric(horizontal: 0), // 移除水平内边距
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween, // 两端对齐
+          children: [
+            // 左侧下拉菜单按钮组
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal, // 水平滚动
+                physics: const BouncingScrollPhysics(), // 滚动物理效果
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.start, // 左对齐，便于滚动
+                  crossAxisAlignment: CrossAxisAlignment.center, // 垂直居中
+                  mainAxisSize: MainAxisSize.min, // 根据子组件确定大小
+                  children: [
+                    // 添加小间距，作为左侧的空白
+                    const SizedBox(width: 4),
+                    // 场景标记按钮
+                    Builder(
+                      builder: (context) => IconButton(
+                        icon: Icon(Icons.movie, size: iconSize),
+                        tooltip: '场景标记',
+                        onPressed: () {
+                          _showDropdownMenu(context, autoCompleteScene, '场景标记');
+                        },
+                        padding: EdgeInsets.all(buttonPadding),
+                        constraints: buttonConstraints,
+                        visualDensity: VisualDensity.compact,
+                        splashRadius: 16.0,
+                      ),
                     ),
-                  ),
-                  // 场景位置按钮
-                  Builder(
-                    builder: (context) => IconButton(
-                      icon: Icon(Icons.place, size: iconSize),
-                      tooltip: '场景位置',
-                      onPressed: () {
-                        _showDropdownMenu(
-                            context, autoCompleteLocation, '场景位置');
-                      },
-                      padding: EdgeInsets.all(buttonPadding),
-                      constraints: buttonConstraints,
-                      visualDensity: VisualDensity.compact,
-                      splashRadius: 16.0,
+                    // 场景位置按钮
+                    Builder(
+                      builder: (context) => IconButton(
+                        icon: Icon(Icons.place, size: iconSize),
+                        tooltip: '场景位置',
+                        onPressed: () {
+                          _showDropdownMenu(
+                              context, autoCompleteLocation, '场景位置');
+                        },
+                        padding: EdgeInsets.all(buttonPadding),
+                        constraints: buttonConstraints,
+                        visualDensity: VisualDensity.compact,
+                        splashRadius: 16.0,
+                      ),
                     ),
-                  ),
-                  // 时间标记按钮
-                  Builder(
-                    builder: (context) => IconButton(
-                      icon: Icon(Icons.access_time, size: iconSize),
-                      tooltip: '时间标记',
-                      onPressed: () {
-                        _showDropdownMenu(context, autoCompleteTime, '时间标记');
-                      },
-                      padding: EdgeInsets.all(buttonPadding),
-                      constraints: buttonConstraints,
-                      visualDensity: VisualDensity.compact,
-                      splashRadius: 16.0,
+                    // 时间标记按钮
+                    Builder(
+                      builder: (context) => IconButton(
+                        icon: Icon(Icons.access_time, size: iconSize),
+                        tooltip: '时间标记',
+                        onPressed: () {
+                          _showDropdownMenu(context, autoCompleteTime, '时间标记');
+                        },
+                        padding: EdgeInsets.all(buttonPadding),
+                        constraints: buttonConstraints,
+                        visualDensity: VisualDensity.compact,
+                        splashRadius: 16.0,
+                      ),
                     ),
-                  ),
-                  // 角色名称按钮
-                  Builder(
-                    builder: (context) => IconButton(
-                      icon: Icon(Icons.person, size: iconSize),
-                      tooltip: '角色名称',
-                      onPressed: () {
-                        _showDropdownMenu(
-                            context, autoCompleteCharacter, '角色名称');
-                      },
-                      padding: EdgeInsets.all(buttonPadding),
-                      constraints: buttonConstraints,
-                      visualDensity: VisualDensity.compact,
-                      splashRadius: 16.0,
+                    // 角色名称按钮
+                    Builder(
+                      builder: (context) => IconButton(
+                        icon: Icon(Icons.person, size: iconSize),
+                        tooltip: '角色名称',
+                        onPressed: () {
+                          _showDropdownMenu(
+                              context, autoCompleteCharacter, '角色名称');
+                        },
+                        padding: EdgeInsets.all(buttonPadding),
+                        constraints: buttonConstraints,
+                        visualDensity: VisualDensity.compact,
+                        splashRadius: 16.0,
+                      ),
                     ),
-                  ),
 
-                  // 画外音/旁白按钮
-                  Builder(
-                    builder: (context) => IconButton(
-                      icon: Icon(Icons.record_voice_over, size: iconSize),
-                      tooltip: '画外音/旁白',
-                      onPressed: () {
-                        _showDropdownMenu(context, autoCompleteVoice, '画外音/旁白');
-                      },
-                      padding: EdgeInsets.all(buttonPadding),
-                      constraints: buttonConstraints,
-                      visualDensity: VisualDensity.compact,
-                      splashRadius: 16.0,
+                    // 画外音/旁白按钮
+                    Builder(
+                      builder: (context) => IconButton(
+                        icon: Icon(Icons.record_voice_over, size: iconSize),
+                        tooltip: '画外音/旁白',
+                        onPressed: () {
+                          _showDropdownMenu(
+                              context, autoCompleteVoice, '画外音/旁白');
+                        },
+                        padding: EdgeInsets.all(buttonPadding),
+                        constraints: buttonConstraints,
+                        visualDensity: VisualDensity.compact,
+                        splashRadius: 16.0,
+                      ),
                     ),
-                  ),
 
-                  // 转场标记按钮
-                  Builder(
-                    builder: (context) => IconButton(
-                      icon: Icon(Icons.compare_arrows, size: iconSize),
-                      tooltip: '转场标记',
-                      onPressed: () {
-                        _showDropdownMenu(
-                            context, autoCompleteTransition, '转场标记');
-                      },
-                      padding: EdgeInsets.all(buttonPadding),
-                      constraints: buttonConstraints,
-                      visualDensity: VisualDensity.compact,
-                      splashRadius: 16.0,
+                    // 转场标记按钮
+                    Builder(
+                      builder: (context) => IconButton(
+                        icon: Icon(Icons.compare_arrows, size: iconSize),
+                        tooltip: '转场标记',
+                        onPressed: () {
+                          _showDropdownMenu(
+                              context, autoCompleteTransition, '转场标记');
+                        },
+                        padding: EdgeInsets.all(buttonPadding),
+                        constraints: buttonConstraints,
+                        visualDensity: VisualDensity.compact,
+                        splashRadius: 16.0,
+                      ),
                     ),
-                  ),
 
-                  // 代码片段
-                  Builder(
-                    builder: (context) => IconButton(
-                      icon: Icon(Icons.integration_instructions_outlined , size: iconSize),
-                      tooltip: '代码片段',
-                      onPressed: () {
-                        _showDropdownMenuOfSnippet(
-                            context, autoCompleteSnippet, '代码片段');
-                      },
-                      padding: EdgeInsets.all(buttonPadding),
-                      constraints: buttonConstraints,
-                      visualDensity: VisualDensity.compact,
-                      splashRadius: 16.0,
+                    // 代码片段
+                    Builder(
+                      builder: (context) => IconButton(
+                        icon: Icon(Icons.integration_instructions_outlined,
+                            size: iconSize),
+                        tooltip: '代码片段',
+                        onPressed: () {
+                          _showDropdownMenuOfSnippet(
+                              context, autoCompleteSnippet, '代码片段');
+                        },
+                        padding: EdgeInsets.all(buttonPadding),
+                        constraints: buttonConstraints,
+                        visualDensity: VisualDensity.compact,
+                        splashRadius: 16.0,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-
-          // 分隔线
-          Container(
-            height: 20,
-            width: 1,
-            color: Colors.grey[300],
-            margin: const EdgeInsets.symmetric(horizontal: 1),
-          ),
-
-          // 右侧光标控制按钮组
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // 光标向后移动按钮
-              Container(
-                width: 30.0,
-                height: 30.0,
-                margin: const EdgeInsets.symmetric(horizontal: 2.0),
-                child: GestureDetector(
-                  onLongPress: () {
-                    // 记录长按开始时间
-                    _longPressStartTime = DateTime.now().millisecondsSinceEpoch;
-
-                    // 初始化移动速度变量
-                    int moveInterval = _cursorMoveInterval;
-                    int moveSteps = 1;
-
-                    // 创建定时器变量
-                    Timer? cursorTimer;
-
-                    // 长按时启动定时器，连续移动光标
-                    cursorTimer = Timer.periodic(
-                        Duration(milliseconds: moveInterval), (timer) {
-                      // 计算长按时间
-                      int pressDuration =
-                          DateTime.now().millisecondsSinceEpoch -
-                              _longPressStartTime;
-
-                      // 根据长按时间调整移动速度和步长
-                      if (pressDuration > 1000) {
-                        // 1秒后开始加速
-                        moveSteps = 5; // 每次移动更多字符
-
-                        // 减少定时器间隔，加快移动速度
-                        int newInterval = _cursorMoveInterval -
-                            ((pressDuration - 1000) ~/ 500) *
-                                _cursorAccelerationStep;
-                        if (newInterval < _minCursorMoveInterval) {
-                          newInterval = _minCursorMoveInterval;
-                        }
-
-                        // 如果间隔发生变化，重新创建定时器
-                        if (newInterval != moveInterval) {
-                          moveInterval = newInterval;
-                          timer.cancel();
-                          _backwardTimer = Timer.periodic(
-                              Duration(milliseconds: moveInterval), (newTimer) {
-                            _moveCursorBackwardMultiple(moveSteps);
-                          });
-                        }
-                      }
-
-                      // 移动光标
-                      _moveCursorBackwardMultiple(moveSteps);
-                    });
-
-                    // 存储定时器引用，以便在松开时取消
-                    _backwardTimer = cursorTimer;
-                  },
-                  onLongPressEnd: (_) {
-                    // 松开时停止定时器
-                    _backwardTimer?.cancel();
-                    _backwardTimer = null;
-                    _longPressStartTime = 0;
-                  },
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      customBorder: const CircleBorder(),
-                      onTap: _moveCursorBackward,
-                      child: Icon(Icons.arrow_back, size: iconSize),
-                    ),
-                  ),
-                ),
-              ),
-              // 光标向前移动按钮
-              Container(
-                width: 30.0,
-                height: 30.0,
-                margin: const EdgeInsets.symmetric(horizontal: 2.0),
-                child: GestureDetector(
-                  onLongPress: () {
-                    // 记录长按开始时间
-                    _longPressStartTime = DateTime.now().millisecondsSinceEpoch;
-
-                    // 初始化移动速度变量
-                    int moveInterval = _cursorMoveInterval;
-                    int moveSteps = 1;
-
-                    // 创建定时器变量
-                    Timer? cursorTimer;
-
-                    // 长按时启动定时器，连续移动光标
-                    cursorTimer = Timer.periodic(
-                        Duration(milliseconds: moveInterval), (timer) {
-                      // 计算长按时间
-                      int pressDuration =
-                          DateTime.now().millisecondsSinceEpoch -
-                              _longPressStartTime;
-
-                      // 根据长按时间调整移动速度和步长
-                      if (pressDuration > 1000) {
-                        // 1秒后开始加速
-                        moveSteps = 5; // 每次移动更多字符
-
-                        // 减少定时器间隔，加快移动速度
-                        int newInterval = _cursorMoveInterval -
-                            ((pressDuration - 1000) ~/ 500) *
-                                _cursorAccelerationStep;
-                        if (newInterval < _minCursorMoveInterval) {
-                          newInterval = _minCursorMoveInterval;
-                        }
-
-                        // 如果间隔发生变化，重新创建定时器
-                        if (newInterval != moveInterval) {
-                          moveInterval = newInterval;
-                          timer.cancel();
-                          _forwardTimer = Timer.periodic(
-                              Duration(milliseconds: moveInterval), (newTimer) {
-                            _moveCursorForwardMultiple(moveSteps);
-                          });
-                        }
-                      }
-
-                      // 移动光标
-                      _moveCursorForwardMultiple(moveSteps);
-                    });
-
-                    // 存储定时器引用，以便在松开时取消
-                    _forwardTimer = cursorTimer;
-                  },
-                  onLongPressEnd: (_) {
-                    // 松开时停止定时器
-                    _forwardTimer?.cancel();
-                    _forwardTimer = null;
-                    _longPressStartTime = 0;
-                  },
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      customBorder: const CircleBorder(),
-                      onTap: _moveCursorForward,
-                      child: Icon(Icons.arrow_forward, size: iconSize),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
-    );
+      // 第二层工具栏
+      Container(
+        height: 30, // 进一步减小工具栏高度
+        color: const Color.fromARGB(255, 240, 240, 240),
+        padding: const EdgeInsets.symmetric(horizontal: 0), // 移除水平内边距
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween, // 两端对齐
+          children: [
+            // 左侧下拉菜单按钮组
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal, // 水平滚动
+                physics: const BouncingScrollPhysics(), // 滚动物理效果
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.start, // 左对齐，便于滚动
+                  crossAxisAlignment: CrossAxisAlignment.center, // 垂直居中
+                  mainAxisSize: MainAxisSize.min, // 根据子组件确定大小
+                  children: [
+                    // 添加小间距，作为左侧的空白
+                    const SizedBox(width: 4),
+                    // 刷新语法样式
+                    Builder(
+                      builder: (context) => IconButton(
+                        disabledColor: Color.fromARGB(20, 0, 0, 0),
+                        icon: Icon(Icons.refresh, size: iconSize),
+                        tooltip: '刷新语法样式',
+                        onPressed: _docChanged ? formatFullText : null,
+                        padding: EdgeInsets.all(buttonPadding),
+                        constraints: buttonConstraints,
+                        visualDensity: VisualDensity.compact,
+                        splashRadius: 16.0,
+                      ),
+                    ),
+
+                    // 分隔线
+                    Container(
+                      height: 20,
+                      width: 1,
+                      color: Colors.grey[300],
+                      margin: const EdgeInsets.symmetric(horizontal: 1),
+                    ),
+
+                    // 撤销
+                    Builder(
+                      builder: (context) => IconButton(
+                        disabledColor: Color.fromARGB(20, 0, 0, 0),
+                        icon: Icon(Icons.undo, size: iconSize),
+                        tooltip: '撤销',
+                        onPressed: _quillController.document.hasUndo
+                            ? _quillController.undo
+                            : null,
+                        padding: EdgeInsets.all(buttonPadding),
+                        constraints: buttonConstraints,
+                        visualDensity: VisualDensity.compact,
+                        splashRadius: 16.0,
+                      ),
+                    ),
+
+                    // 重做
+                    Builder(
+                      builder: (context) => IconButton(
+                        disabledColor: Color.fromARGB(20, 0, 0, 0),
+                        icon: Icon(Icons.redo, size: iconSize),
+                        tooltip: '重做',
+                        onPressed: _quillController.document.hasRedo
+                            ? _quillController.redo
+                            : null,
+                        padding: EdgeInsets.all(buttonPadding),
+                        constraints: buttonConstraints,
+                        visualDensity: VisualDensity.compact,
+                        splashRadius: 16.0,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // 分隔线
+            Container(
+              height: 20,
+              width: 1,
+              color: Colors.grey[300],
+              margin: const EdgeInsets.symmetric(horizontal: 1),
+            ),
+
+            // 右侧光标控制按钮组
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // 光标向后移动按钮
+                Container(
+                  width: 30.0,
+                  height: 30.0,
+                  margin: const EdgeInsets.symmetric(horizontal: 2.0),
+                  child: GestureDetector(
+                    onLongPress: () {
+                      // 记录长按开始时间
+                      _longPressStartTime =
+                          DateTime.now().millisecondsSinceEpoch;
+
+                      // 初始化移动速度变量
+                      int moveInterval = _cursorMoveInterval;
+                      int moveSteps = 1;
+
+                      // 创建定时器变量
+                      Timer? cursorTimer;
+
+                      // 长按时启动定时器，连续移动光标
+                      cursorTimer = Timer.periodic(
+                          Duration(milliseconds: moveInterval), (timer) {
+                        // 计算长按时间
+                        int pressDuration =
+                            DateTime.now().millisecondsSinceEpoch -
+                                _longPressStartTime;
+
+                        // 根据长按时间调整移动速度和步长
+                        if (pressDuration > 1000) {
+                          // 1秒后开始加速
+                          moveSteps = 5; // 每次移动更多字符
+
+                          // 减少定时器间隔，加快移动速度
+                          int newInterval = _cursorMoveInterval -
+                              ((pressDuration - 1000) ~/ 500) *
+                                  _cursorAccelerationStep;
+                          if (newInterval < _minCursorMoveInterval) {
+                            newInterval = _minCursorMoveInterval;
+                          }
+
+                          // 如果间隔发生变化，重新创建定时器
+                          if (newInterval != moveInterval) {
+                            moveInterval = newInterval;
+                            timer.cancel();
+                            _backwardTimer = Timer.periodic(
+                                Duration(milliseconds: moveInterval),
+                                (newTimer) {
+                              _moveCursorBackwardMultiple(moveSteps);
+                            });
+                          }
+                        }
+
+                        // 移动光标
+                        _moveCursorBackwardMultiple(moveSteps);
+                      });
+
+                      // 存储定时器引用，以便在松开时取消
+                      _backwardTimer = cursorTimer;
+                    },
+                    onLongPressEnd: (_) {
+                      // 松开时停止定时器
+                      _backwardTimer?.cancel();
+                      _backwardTimer = null;
+                      _longPressStartTime = 0;
+                    },
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: _moveCursorBackward,
+                        child: Icon(Icons.arrow_back, size: iconSize),
+                      ),
+                    ),
+                  ),
+                ),
+                // 光标向前移动按钮
+                Container(
+                  width: 30.0,
+                  height: 30.0,
+                  margin: const EdgeInsets.symmetric(horizontal: 2.0),
+                  child: GestureDetector(
+                    onLongPress: () {
+                      // 记录长按开始时间
+                      _longPressStartTime =
+                          DateTime.now().millisecondsSinceEpoch;
+
+                      // 初始化移动速度变量
+                      int moveInterval = _cursorMoveInterval;
+                      int moveSteps = 1;
+
+                      // 创建定时器变量
+                      Timer? cursorTimer;
+
+                      // 长按时启动定时器，连续移动光标
+                      cursorTimer = Timer.periodic(
+                          Duration(milliseconds: moveInterval), (timer) {
+                        // 计算长按时间
+                        int pressDuration =
+                            DateTime.now().millisecondsSinceEpoch -
+                                _longPressStartTime;
+
+                        // 根据长按时间调整移动速度和步长
+                        if (pressDuration > 1000) {
+                          // 1秒后开始加速
+                          moveSteps = 5; // 每次移动更多字符
+
+                          // 减少定时器间隔，加快移动速度
+                          int newInterval = _cursorMoveInterval -
+                              ((pressDuration - 1000) ~/ 500) *
+                                  _cursorAccelerationStep;
+                          if (newInterval < _minCursorMoveInterval) {
+                            newInterval = _minCursorMoveInterval;
+                          }
+
+                          // 如果间隔发生变化，重新创建定时器
+                          if (newInterval != moveInterval) {
+                            moveInterval = newInterval;
+                            timer.cancel();
+                            _forwardTimer = Timer.periodic(
+                                Duration(milliseconds: moveInterval),
+                                (newTimer) {
+                              _moveCursorForwardMultiple(moveSteps);
+                            });
+                          }
+                        }
+
+                        // 移动光标
+                        _moveCursorForwardMultiple(moveSteps);
+                      });
+
+                      // 存储定时器引用，以便在松开时取消
+                      _forwardTimer = cursorTimer;
+                    },
+                    onLongPressEnd: (_) {
+                      // 松开时停止定时器
+                      _forwardTimer?.cancel();
+                      _forwardTimer = null;
+                      _longPressStartTime = 0;
+                    },
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: _moveCursorForward,
+                        child: Icon(Icons.arrow_forward, size: iconSize),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      )
+    ]);
   }
 
   // 切换工具栏显示/隐藏的方法已经在状态栏按钮中实现
@@ -1596,10 +1778,10 @@ Metadata: {
           //     });
           //   },
           // ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: formatFullText,
-          ),
+          // IconButton(
+          //   icon: const Icon(Icons.refresh),
+          //   onPressed: formatFullText,
+          // ),
           Expanded(
             child: TextField(
               controller: _titleEditingController,
@@ -1622,7 +1804,8 @@ Metadata: {
           ),
           IconButton(
             icon: const Icon(Icons.save),
-            onPressed: _saveFile,
+            disabledColor: const Color.fromARGB(20, 0, 0, 0),
+            onPressed: _docChanged ? _saveFile : null,
           ),
         ],
       ),
@@ -1673,7 +1856,7 @@ Metadata: {
               },
             ),
             // 根据状态显示或隐藏工具栏
-            if (_showToolbar) _buildToolbar(),
+            if (_editable) _buildToolbar(),
             Container(
               height: 24,
               color: Color.fromARGB(255, 210, 210, 210),
@@ -1684,18 +1867,19 @@ Metadata: {
                   // 工具栏切换按钮
                   IconButton(
                     icon: Icon(
-                      _showToolbar
-                          ? Icons.tips_and_updates_rounded
-                          : Icons.tips_and_updates_outlined,
+                      _editable ? Icons.edit_sharp : Icons.edit_off_sharp,
                       size: 16,
-                      color: _showToolbar ? Colors.blue : Colors.grey,
+                      color: _editable ? Colors.blue : Colors.grey,
                     ),
-                    tooltip: _showToolbar ? '隐藏工具栏' : '显示工具栏',
+                    tooltip: _editable ? '隐藏工具栏' : '显示工具栏',
                     onPressed: () {
                       setState(() {
-                        _showToolbar = !_showToolbar;
+                        _editable = !_editable;
+                        if (!_editable) {
+                          _historyRollback = false;
+                        }
                         // 更新编辑器的只读状态
-                        // _quillController.readOnly = !_showToolbar;
+                        // _quillController.readOnly = !_editable;
                       });
                     },
                     padding: EdgeInsets.zero,
