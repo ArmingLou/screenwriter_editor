@@ -82,6 +82,16 @@ class _EditorScreenState extends State<EditorScreen> {
   // 控制工具栏显示/隐藏的状态变量
   bool _showToolbar = false;
 
+  // 光标移动定时器
+  Timer? _backwardTimer;
+  Timer? _forwardTimer;
+
+  // 光标移动加速相关变量
+  final int _cursorMoveInterval = 50; // 初始移动间隔（毫秒）
+  final int _minCursorMoveInterval = 5; // 最小移动间隔（毫秒）
+  final int _cursorAccelerationStep = 5; // 每次加速减少的毫秒数
+  int _longPressStartTime = 0; // 长按开始时间
+
   // Statis? statisGlobal;
 
   int _lastSelection = -1;
@@ -96,6 +106,124 @@ class _EditorScreenState extends State<EditorScreen> {
   double _charsPerMinu = 243.22; //按每分钟多少个字预估， （全文，不区分对白）。
   double _dialCharsPerMinu = 171; //按每分钟多少个字预估, （只针对 对白）。
   bool fisrtScencStarted = false;
+
+  List<String> autoCompleteScene = [
+    ".(内景) ",
+    ".(外景) ",
+    ".(内外景) ",
+    "INT. ",
+    "EXT. ",
+    "INT./EXT. ",
+    "INT/EXT. ",
+    "I/E. ",
+    "EST. "
+  ];
+  List<String> autoCompleteLocation = [];
+  List<String> autoCompleteTime = [
+    " - 日",
+    " - 夜",
+    " - 黎明",
+    " - 清晨",
+    " - 傍晚",
+    " - DAY",
+    " - NIGHT",
+    " - DAWN",
+    " - MORNING",
+    " - DUSK"
+  ];
+  List<String> autoCompleteCharacter = ["@"];
+  List<String> autoCompleteVoice = [
+    "  (画外音)",
+    "  (旁白)",
+    "  (O. S.)",
+    "  (V. O.)"
+  ];
+  List<String> autoCompleteTransition = [
+    ">叠化",
+    ">淡出淡入",
+    ">切到",
+    ">闪回",
+    ">淡出",
+    ">淡入",
+    ">闪回结束"
+  ];
+
+  List<String> autoCompleteSnippet = [
+    "Title Page",
+    "日期",
+    "影片类型",
+    "一句话梗概",
+    "故事简介",
+    "人设",
+    "人设填空",
+    "[[]]",
+    "/* */",
+    "#",
+  ];
+
+  void addCompleteAfterParser(Statis statis) {
+    // 处理 autoCompleteLocation - 按首字拼音或首字母升序排序
+    autoCompleteLocation.clear();
+    final locationsList = statis.locations.keys.toList();
+
+    // 自定义排序函数，按首字的拼音或首字母排序
+    locationsList.sort((a, b) {
+      // 获取首字
+      String firstCharA = a.isNotEmpty ? a[0] : '';
+      String firstCharB = b.isNotEmpty ? b[0] : '';
+
+      // 判断是否为英文字符
+      bool isEnglishA = firstCharA.codeUnitAt(0) < 128;
+      bool isEnglishB = firstCharB.codeUnitAt(0) < 128;
+
+      // 如果两个都是英文或都是中文，直接比较
+      if (isEnglishA == isEnglishB) {
+        return a.compareTo(b);
+      }
+
+      // 如果一个是英文一个是中文，英文在前
+      return isEnglishA ? -1 : 1;
+    });
+
+    autoCompleteLocation.addAll(locationsList);
+
+    // 处理 autoCompleteCharacter - 按字数降序排序
+    autoCompleteCharacter.clear();
+    final characterEntries = statis.characters.entries.toList();
+    characterEntries.sort((a, b) => b.value.compareTo(a.value)); // 按字数降序排序
+    final sortedCharacters =
+        characterEntries.map((entry) => entry.key).toList();
+    autoCompleteCharacter.add(""); //加一个空的
+    autoCompleteCharacter.addAll(sortedCharacters);
+    //autoCompleteCharacter 全部加上前缀“@”
+    autoCompleteCharacter = autoCompleteCharacter.map((e) => "@$e").toList();
+    // 处理 autoCompleteTime - 保持基础时间列表顺序，添加新时间
+    final baseTimeList = [
+      " - 日",
+      " - 夜",
+      " - 黎明",
+      " - 清晨",
+      " - 傍晚",
+      " - DAY",
+      " - NIGHT",
+      " - DAWN",
+      " - MORNING",
+      " - DUSK"
+    ];
+    autoCompleteTime = List.from(baseTimeList);
+
+    // 添加其他时间标记
+    for (var time in statis.times.keys) {
+      if (time == "不确定") {
+        continue;
+      }
+      final formattedTime = " - $time";
+      if (!autoCompleteTime.contains(formattedTime)) {
+        autoCompleteTime.add(formattedTime);
+      }
+    }
+  }
+
   // 获取可见区域文本
   Future<void> formatText(int index, int len, Attribute? attribute,
       bool shouldNotifyListeners) async {
@@ -165,7 +293,7 @@ class _EditorScreenState extends State<EditorScreen> {
     // _stateStatisNotifier.value = null;
 
     // 解析并格式化可见文本
-    if(_parser.containsKey(scene)){
+    if (_parser.containsKey(scene)) {
       _parser[scene]!.cancel = true;
     }
     final parser = FountainParser();
@@ -191,6 +319,8 @@ class _EditorScreenState extends State<EditorScreen> {
     _dialCharsPerMinu = parsed.dialCharsPerMinu;
     _startChars = parsed.startChars;
     _elements = parsed.elements;
+
+    addCompleteAfterParser(parsed.statis!);
 
     if (callback != null) {
       callback();
@@ -319,7 +449,7 @@ class _EditorScreenState extends State<EditorScreen> {
               change.change.last.key != 'delete')) {
         return;
       }
-      parseFullTextAndStatis("edit",() {
+      parseFullTextAndStatis("edit", () {
         if (_onlyEditRefresh) {
           addFormatTask();
         }
@@ -414,6 +544,9 @@ class _EditorScreenState extends State<EditorScreen> {
       selection: const TextSelection.collapsed(offset: 0),
       onSelectionChanged: whenChangeSlect,
     );
+
+    // 设置初始的只读状态，与工具栏状态一致
+    // _quillController.readOnly = !_showToolbar;
 
     _setupFormatListener();
   }
@@ -522,6 +655,11 @@ class _EditorScreenState extends State<EditorScreen> {
                 // addFormatTask();//部分格式
                 formatFullText(); //全文格式
               });
+              // setState(() {
+              //   // 更新编辑器的只读状态
+              //   _showToolbar = false;
+              //   // _quillController.readOnly = true;
+              // });
             } catch (e) {
               _showError('打开文件失败: $e');
               _stateBarMsgNotifier.value = ''; //恢复0，为状态栏显示状态。
@@ -894,71 +1032,555 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
+  // 在当前光标位置插入文本
+  void _insertTextAtCursor(String text) {
+    final index = _quillController.selection.baseOffset;
+    _quillController.replaceText(index, 0, text, null);
+
+    // 将光标移动到插入文本的末尾
+    final newPosition = index + text.length;
+    _quillController.updateSelection(
+        TextSelection.collapsed(offset: newPosition), ChangeSource.local);
+  }
+
+  // 光标向前移动
+  void _moveCursorForward() {
+    final currentPosition = _quillController.selection.baseOffset;
+    final documentLength = _quillController.document.length;
+
+    // 确保不超出文档范围
+    if (currentPosition < documentLength - 1) {
+      final newPosition = currentPosition + 1;
+      _quillController.updateSelection(
+          TextSelection.collapsed(offset: newPosition), ChangeSource.local);
+    }
+  }
+
+  // 光标向前移动多步
+  void _moveCursorForwardMultiple(int steps) {
+    final currentPosition = _quillController.selection.baseOffset;
+    final documentLength = _quillController.document.length;
+
+    // 确保不超出文档范围
+    if (currentPosition < documentLength - 1) {
+      int newPosition = currentPosition + steps;
+      if (newPosition >= documentLength) {
+        newPosition = documentLength - 1;
+      }
+      _quillController.updateSelection(
+          TextSelection.collapsed(offset: newPosition), ChangeSource.local);
+    }
+  }
+
+  // 光标向后移动
+  void _moveCursorBackward() {
+    final currentPosition = _quillController.selection.baseOffset;
+
+    // 确保不超出文档范围
+    if (currentPosition > 0) {
+      final newPosition = currentPosition - 1;
+      _quillController.updateSelection(
+          TextSelection.collapsed(offset: newPosition), ChangeSource.local);
+    }
+  }
+
+  // 光标向后移动多步
+  void _moveCursorBackwardMultiple(int steps) {
+    final currentPosition = _quillController.selection.baseOffset;
+
+    // 确保不超出文档范围
+    if (currentPosition > 0) {
+      int newPosition = currentPosition - steps;
+      if (newPosition < 0) {
+        newPosition = 0;
+      }
+      _quillController.updateSelection(
+          TextSelection.collapsed(offset: newPosition), ChangeSource.local);
+    }
+  }
+
+  // 显示下拉列表
+  void _showDropdownMenu(
+      BuildContext context, List<String> items, String title) {
+    final RenderBox button = context.findRenderObject() as RenderBox;
+    final RenderBox overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+    final RelativeRect position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(Offset.zero, ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero),
+            ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    // 自定义紧凑的菜单项样式
+    final customMenuItemHeight = 30.0; // 默认是48.0
+    final customMenuItemPadding =
+        const EdgeInsets.symmetric(horizontal: 16.0, vertical: 1.0); // 默认是16.0
+
+    showMenu<String>(
+      context: context,
+      position: position,
+      // 设置菜单项之间的间距
+      elevation: 1.0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(1.0)),
+      items: [
+        PopupMenuItem<String>(
+          enabled: false,
+          height: customMenuItemHeight,
+          padding: customMenuItemPadding,
+          child: Text(title,
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.0)),
+        ),
+        ...items.map((String item) => PopupMenuItem<String>(
+              value: item,
+              height: customMenuItemHeight,
+              padding: customMenuItemPadding,
+              child: Text(item, style: TextStyle(fontSize: 13.0)),
+            )),
+      ],
+    ).then((String? selectedValue) {
+      if (selectedValue != null) {
+        _insertTextAtCursor(selectedValue);
+      }
+    });
+  }
+
+  // 显示代码片段下拉列表
+  void _showDropdownMenuOfSnippet(
+      BuildContext context, List<String> items, String title) {
+    final RenderBox button = context.findRenderObject() as RenderBox;
+    final RenderBox overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+    final RelativeRect position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(Offset.zero, ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero),
+            ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    // 自定义紧凑的菜单项样式
+    final customMenuItemHeight = 30.0; // 默认是48.0
+    final customMenuItemPadding =
+        const EdgeInsets.symmetric(horizontal: 16.0, vertical: 1.0); // 默认是16.0
+
+    showMenu<String>(
+      context: context,
+      position: position,
+      // 设置菜单项之间的间距
+      elevation: 1.0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(1.0)),
+      items: [
+        PopupMenuItem<String>(
+          enabled: false,
+          height: customMenuItemHeight,
+          padding: customMenuItemPadding,
+          child: Text(title,
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.0)),
+        ),
+        ...items.map((String item) => PopupMenuItem<String>(
+              value: item,
+              height: customMenuItemHeight,
+              padding: customMenuItemPadding,
+              child: Text(item, style: TextStyle(fontSize: 13.0)),
+            )),
+      ],
+    ).then((String? selectedValue) {
+      if (selectedValue != null) {
+        _insertTextAtCursor(_getSnippetByName(selectedValue));
+      }
+    });
+  }
+
+  String _getSnippetByName(String name) {
+    switch (name) {
+      case "Title Page":
+        // 获取当前日期
+        final currentDate = DateFormat('yyyy/MM/dd').format(DateTime.now());
+        return '''Title: **《》**
+Credit: 作者
+Author: Arming
+Draft Date: $currentDate
+Contact: arming.lou@foxmail.com
+Font: Source Han Sans
+Font Italic: FZKai-Z03
+
+Metadata: {
+    "userPassword":"",
+    "ownerPassword":"Arm_ing",
+    "permissions":{
+        "printing":false,
+        "modifying":false,
+        "copying":false,
+        "annotating":false,
+        "fillingForms":false,
+        "contentAccessibility":false,
+        "documentAssembly":false
+    },
+    "chars_per_minu": 243.22,
+    "dial_chars_per_minu": 171,
+    "chinaFormat": 1,
+    "embedFonts": false,
+    "print": {
+        "paper_size": "a4",
+        "font_size": 12,
+        "character_spacing": 1,
+        "note_font_size": 9,
+        "lines_per_page": 30,
+        "top_margin": 1.19,
+        "bottom_margin": 1,
+        "page_width": 8.27,
+        "page_height": 11.69,
+        "left_margin": 1.5,
+        "right_margin": 1.5,
+        "font_width": 0.1,
+        "note_line_height": 0.17,
+        "page_number_top_margin": 0.4
+    }
+}''';
+      case "日期":
+        final currentDate = DateFormat('yyyy/MM/dd').format(DateTime.now());
+        return currentDate;
+      case "影片类型":
+        return '''#影片类型
+/* 情感类型 / 情节类型 / 情绪类型 */
+**类型：** ''';
+      case "一句话梗概":
+        return '''#一句话梗概
+**一句话梗概：**
+''';
+      case "故事简介":
+        return '''#故事简介
+**故事简介：**
+''';
+      case "人设":
+        return '''#人设
+**人物设定：**
+
+''';
+      case "人设填空":
+        return '''(基本信息)
+(+可怜之处，最大困境)
+(-羡慕之处)
+(+过人之处)
+(-缺陷之处)
+(+光辉之处)
+(-不足之处)
+(=结局特质)
+''';
+      default:
+        return name;
+    }
+  }
+
   // 创建工具栏组件
   Widget _buildToolbar() {
+    // 定义图标大小和按钮大小，使其更紧凑
+    const double iconSize = 18.0; // 进一步缩小图标大小
+    const double buttonWidth = 30.0; // 进一步缩小按钮宽度
+    const double buttonPadding = 0.0; // 最小化按钮内边距
+
+    // 创建通用的按钮约束 - 使用非常紧凑的约束
+    final buttonConstraints =
+        BoxConstraints.tightFor(width: buttonWidth, height: 30.0);
+
     return Container(
-      height: 30,
+      height: 30, // 进一步减小工具栏高度
       color: const Color.fromARGB(255, 240, 240, 240),
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 0), // 移除水平内边距
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween, // 两端对齐
         children: [
-          IconButton(
-            icon: const Icon(Icons.format_bold),
-            tooltip: '加粗',
-            onPressed: () {
-              // 功能待实现
-            },
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
+          // 左侧下拉菜单按钮组
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal, // 水平滚动
+              physics: const BouncingScrollPhysics(), // 滚动物理效果
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.start, // 左对齐，便于滚动
+                crossAxisAlignment: CrossAxisAlignment.center, // 垂直居中
+                mainAxisSize: MainAxisSize.min, // 根据子组件确定大小
+                children: [
+                  // 添加小间距，作为左侧的空白
+                  const SizedBox(width: 4),
+                  // 场景标记按钮
+                  Builder(
+                    builder: (context) => IconButton(
+                      icon: Icon(Icons.movie, size: iconSize),
+                      tooltip: '场景标记',
+                      onPressed: () {
+                        _showDropdownMenu(context, autoCompleteScene, '场景标记');
+                      },
+                      padding: EdgeInsets.all(buttonPadding),
+                      constraints: buttonConstraints,
+                      visualDensity: VisualDensity.compact,
+                      splashRadius: 16.0,
+                    ),
+                  ),
+                  // 场景位置按钮
+                  Builder(
+                    builder: (context) => IconButton(
+                      icon: Icon(Icons.place, size: iconSize),
+                      tooltip: '场景位置',
+                      onPressed: () {
+                        _showDropdownMenu(
+                            context, autoCompleteLocation, '场景位置');
+                      },
+                      padding: EdgeInsets.all(buttonPadding),
+                      constraints: buttonConstraints,
+                      visualDensity: VisualDensity.compact,
+                      splashRadius: 16.0,
+                    ),
+                  ),
+                  // 时间标记按钮
+                  Builder(
+                    builder: (context) => IconButton(
+                      icon: Icon(Icons.access_time, size: iconSize),
+                      tooltip: '时间标记',
+                      onPressed: () {
+                        _showDropdownMenu(context, autoCompleteTime, '时间标记');
+                      },
+                      padding: EdgeInsets.all(buttonPadding),
+                      constraints: buttonConstraints,
+                      visualDensity: VisualDensity.compact,
+                      splashRadius: 16.0,
+                    ),
+                  ),
+                  // 角色名称按钮
+                  Builder(
+                    builder: (context) => IconButton(
+                      icon: Icon(Icons.person, size: iconSize),
+                      tooltip: '角色名称',
+                      onPressed: () {
+                        _showDropdownMenu(
+                            context, autoCompleteCharacter, '角色名称');
+                      },
+                      padding: EdgeInsets.all(buttonPadding),
+                      constraints: buttonConstraints,
+                      visualDensity: VisualDensity.compact,
+                      splashRadius: 16.0,
+                    ),
+                  ),
+
+                  // 画外音/旁白按钮
+                  Builder(
+                    builder: (context) => IconButton(
+                      icon: Icon(Icons.record_voice_over, size: iconSize),
+                      tooltip: '画外音/旁白',
+                      onPressed: () {
+                        _showDropdownMenu(context, autoCompleteVoice, '画外音/旁白');
+                      },
+                      padding: EdgeInsets.all(buttonPadding),
+                      constraints: buttonConstraints,
+                      visualDensity: VisualDensity.compact,
+                      splashRadius: 16.0,
+                    ),
+                  ),
+
+                  // 转场标记按钮
+                  Builder(
+                    builder: (context) => IconButton(
+                      icon: Icon(Icons.compare_arrows, size: iconSize),
+                      tooltip: '转场标记',
+                      onPressed: () {
+                        _showDropdownMenu(
+                            context, autoCompleteTransition, '转场标记');
+                      },
+                      padding: EdgeInsets.all(buttonPadding),
+                      constraints: buttonConstraints,
+                      visualDensity: VisualDensity.compact,
+                      splashRadius: 16.0,
+                    ),
+                  ),
+
+                  // 代码片段
+                  Builder(
+                    builder: (context) => IconButton(
+                      icon: Icon(Icons.insert_drive_file, size: iconSize),
+                      tooltip: '代码片段',
+                      onPressed: () {
+                        _showDropdownMenuOfSnippet(
+                            context, autoCompleteSnippet, '代码片段');
+                      },
+                      padding: EdgeInsets.all(buttonPadding),
+                      constraints: buttonConstraints,
+                      visualDensity: VisualDensity.compact,
+                      splashRadius: 16.0,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-          IconButton(
-            icon: const Icon(Icons.format_italic),
-            tooltip: '斜体',
-            onPressed: () {
-              // 功能待实现
-            },
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
+
+          // 分隔线
+          Container(
+            height: 20,
+            width: 1,
+            color: Colors.grey[300],
+            margin: const EdgeInsets.symmetric(horizontal: 1),
           ),
-          IconButton(
-            icon: const Icon(Icons.format_underlined),
-            tooltip: '下划线',
-            onPressed: () {
-              // 功能待实现
-            },
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-          ),
-          IconButton(
-            icon: const Icon(Icons.format_align_left),
-            tooltip: '左对齐',
-            onPressed: () {
-              // 功能待实现
-            },
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-          ),
-          IconButton(
-            icon: const Icon(Icons.format_align_center),
-            tooltip: '居中对齐',
-            onPressed: () {
-              // 功能待实现
-            },
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
+
+          // 右侧光标控制按钮组
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // 光标向后移动按钮
+              Container(
+                width: 30.0,
+                height: 30.0,
+                margin: const EdgeInsets.symmetric(horizontal: 2.0),
+                child: GestureDetector(
+                  onLongPress: () {
+                    // 记录长按开始时间
+                    _longPressStartTime = DateTime.now().millisecondsSinceEpoch;
+
+                    // 初始化移动速度变量
+                    int moveInterval = _cursorMoveInterval;
+                    int moveSteps = 1;
+
+                    // 创建定时器变量
+                    Timer? cursorTimer;
+
+                    // 长按时启动定时器，连续移动光标
+                    cursorTimer = Timer.periodic(
+                        Duration(milliseconds: moveInterval), (timer) {
+                      // 计算长按时间
+                      int pressDuration =
+                          DateTime.now().millisecondsSinceEpoch -
+                              _longPressStartTime;
+
+                      // 根据长按时间调整移动速度和步长
+                      if (pressDuration > 1000) {
+                        // 1秒后开始加速
+                        moveSteps = 5; // 每次移动更多字符
+
+                        // 减少定时器间隔，加快移动速度
+                        int newInterval = _cursorMoveInterval -
+                            ((pressDuration - 1000) ~/ 500) *
+                                _cursorAccelerationStep;
+                        if (newInterval < _minCursorMoveInterval) {
+                          newInterval = _minCursorMoveInterval;
+                        }
+
+                        // 如果间隔发生变化，重新创建定时器
+                        if (newInterval != moveInterval) {
+                          moveInterval = newInterval;
+                          timer.cancel();
+                          _backwardTimer = Timer.periodic(
+                              Duration(milliseconds: moveInterval), (newTimer) {
+                            _moveCursorBackwardMultiple(moveSteps);
+                          });
+                        }
+                      }
+
+                      // 移动光标
+                      _moveCursorBackwardMultiple(moveSteps);
+                    });
+
+                    // 存储定时器引用，以便在松开时取消
+                    _backwardTimer = cursorTimer;
+                  },
+                  onLongPressEnd: (_) {
+                    // 松开时停止定时器
+                    _backwardTimer?.cancel();
+                    _backwardTimer = null;
+                    _longPressStartTime = 0;
+                  },
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: _moveCursorBackward,
+                      child: Icon(Icons.arrow_back, size: iconSize),
+                    ),
+                  ),
+                ),
+              ),
+              // 光标向前移动按钮
+              Container(
+                width: 30.0,
+                height: 30.0,
+                margin: const EdgeInsets.symmetric(horizontal: 2.0),
+                child: GestureDetector(
+                  onLongPress: () {
+                    // 记录长按开始时间
+                    _longPressStartTime = DateTime.now().millisecondsSinceEpoch;
+
+                    // 初始化移动速度变量
+                    int moveInterval = _cursorMoveInterval;
+                    int moveSteps = 1;
+
+                    // 创建定时器变量
+                    Timer? cursorTimer;
+
+                    // 长按时启动定时器，连续移动光标
+                    cursorTimer = Timer.periodic(
+                        Duration(milliseconds: moveInterval), (timer) {
+                      // 计算长按时间
+                      int pressDuration =
+                          DateTime.now().millisecondsSinceEpoch -
+                              _longPressStartTime;
+
+                      // 根据长按时间调整移动速度和步长
+                      if (pressDuration > 1000) {
+                        // 1秒后开始加速
+                        moveSteps = 5; // 每次移动更多字符
+
+                        // 减少定时器间隔，加快移动速度
+                        int newInterval = _cursorMoveInterval -
+                            ((pressDuration - 1000) ~/ 500) *
+                                _cursorAccelerationStep;
+                        if (newInterval < _minCursorMoveInterval) {
+                          newInterval = _minCursorMoveInterval;
+                        }
+
+                        // 如果间隔发生变化，重新创建定时器
+                        if (newInterval != moveInterval) {
+                          moveInterval = newInterval;
+                          timer.cancel();
+                          _forwardTimer = Timer.periodic(
+                              Duration(milliseconds: moveInterval), (newTimer) {
+                            _moveCursorForwardMultiple(moveSteps);
+                          });
+                        }
+                      }
+
+                      // 移动光标
+                      _moveCursorForwardMultiple(moveSteps);
+                    });
+
+                    // 存储定时器引用，以便在松开时取消
+                    _forwardTimer = cursorTimer;
+                  },
+                  onLongPressEnd: (_) {
+                    // 松开时停止定时器
+                    _forwardTimer?.cancel();
+                    _forwardTimer = null;
+                    _longPressStartTime = 0;
+                  },
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: _moveCursorForward,
+                      child: Icon(Icons.arrow_forward, size: iconSize),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  // 切换工具栏显示/隐藏
-  void _toggleToolbar() {
-    setState(() {
-      _showToolbar = !_showToolbar;
-    });
-  }
+  // 切换工具栏显示/隐藏的方法已经在状态栏按钮中实现
 
   @override
   Widget build(BuildContext context) {
@@ -1007,8 +1629,6 @@ class _EditorScreenState extends State<EditorScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // 根据状态显示或隐藏工具栏
-            if (_showToolbar) _buildToolbar(),
             Expanded(
               child: QuillEditor(
                 focusNode: _focusNode,
@@ -1052,6 +1672,8 @@ class _EditorScreenState extends State<EditorScreen> {
                 }
               },
             ),
+            // 根据状态显示或隐藏工具栏
+            if (_showToolbar) _buildToolbar(),
             Container(
               height: 24,
               color: Color.fromARGB(255, 210, 210, 210),
@@ -1062,14 +1684,18 @@ class _EditorScreenState extends State<EditorScreen> {
                   // 工具栏切换按钮
                   IconButton(
                     icon: Icon(
-                      _showToolbar ? Icons.build_circle : Icons.build,
-                      size: _showToolbar ? 18 : 14,
+                      _showToolbar
+                          ? Icons.tips_and_updates_rounded
+                          : Icons.tips_and_updates_outlined,
+                      size: 18,
                       color: _showToolbar ? Colors.blue : Colors.grey,
                     ),
                     tooltip: _showToolbar ? '隐藏工具栏' : '显示工具栏',
                     onPressed: () {
                       setState(() {
                         _showToolbar = !_showToolbar;
+                        // 更新编辑器的只读状态
+                        // _quillController.readOnly = !_showToolbar;
                       });
                     },
                     padding: EdgeInsets.zero,
@@ -1144,10 +1770,18 @@ class _EditorScreenState extends State<EditorScreen> {
                           currLabel = '0”';
                           totalLabel = '0”';
                         }
+                        // 计算百分比，确保它是一个有效的数字并且在 0.0 到 1.0 之间
+                        double percent = 0.0;
+                        if (arr[1] > 0) {
+                          percent = arr[0] / arr[1];
+                          // 限制在 0.0 到 1.0 之间
+                          percent = percent.clamp(0.0, 1.0);
+                        }
+
                         return LinearPercentIndicator(
                           width: _sliderWidth,
                           lineHeight: 14.0,
-                          percent: arr[0] / arr[1],
+                          percent: percent,
                           center: Text(
                             '${arr[0]} / ${arr[1]}  [$currLabel/$totalLabel]',
                             style: TextStyle(fontSize: 12.0),
