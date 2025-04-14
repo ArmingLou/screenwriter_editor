@@ -13,6 +13,8 @@ class StatsPage extends StatelessWidget {
   Widget _buildChart(Map<String, int> data, String title, bool charsTime,
       bool colorName, BuildContext context) {
     // final number = NumberFormat.compact(locale: 'ru');
+    // 过滤 value == 0
+    data.removeWhere((key, value) => value == 0);
     final sorted = data.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 

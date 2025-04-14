@@ -138,7 +138,7 @@ class FountainParser {
       final match = FountainConstants.regex['character']!.firstMatch(text);
       if (match != null) {
         var name = trimCharacterName(text);
-        // statis.addCharacterChars(name, 0);
+        statis.addCharacterChars(name, 0);// 如果未开始第一额场景， 统计图标要将 0 的过滤； 但是 辅助自动输入需要可以 下拉选择。
         preCharater = name;
       }
     }
