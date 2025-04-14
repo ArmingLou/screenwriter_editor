@@ -8,14 +8,16 @@ class ParserOutput {
   final double dialCharsPerMinu; //按每分钟多少个字预估, （只针对 对白）。
   final bool fisrtScencStarted;
   final int startChars; //第一个场景之前的字数，作用是预估时间需要减去。包含注解的字数。
+  final bool canceled;
   ParserOutput(this.elements, this.statis, this.charsPerMinu,
-      this.dialCharsPerMinu, this.fisrtScencStarted, this.startChars);
+      this.dialCharsPerMinu, this.fisrtScencStarted, this.startChars, this.canceled);
 }
 
 class FountainElement {
   final String type;
   final String text;
   final Range range;
+  bool formated = false;
 
   FountainElement(this.type, this.text, this.range);
 }
@@ -34,7 +36,17 @@ class CommentResult {
   CommentResult(this.elements, this.left);
 }
 
+typedef CallbackParser = void Function(ParserOutput output);
+
 class FountainParser {
+  
+  bool parseing = false;
+  bool cancel = false;
+  ParserOutput? result;
+  
+  List<CallbackParser> callbacks = [];
+  
+  
   // 查找所有注释标记
   final commentPatterns = [
     ['[[', ']]'],
@@ -201,6 +213,13 @@ class FountainParser {
   }
 
   ParserOutput parse(bool doStatis, String text) {
+    
+    if(parseing || cancel){
+      result = ParserOutput([], null, 0, 0, false, 0, true);
+      return result!;
+    }
+    parseing = true;
+    
     commentStarted = -1;
     statis = Statis.empty();
 
@@ -218,6 +237,13 @@ class FountainParser {
     int startChars = 0; //第一个场景之前的字数，作用是预估时间需要减去。
 
     for (var line in lines) {
+      
+      if(cancel){
+        result = ParserOutput([], null, 0, 0, false, 0, true);
+        return result!;
+      }
+      
+      
       final trimmedLine = line.trim();
       final length = line.length;
       var statisDial = false; //是否需要统计对话字数，需要在减去评论字数之后
@@ -437,7 +463,31 @@ class FountainParser {
       offset += length + 1; // +1 for newline
     }
 
-    return ParserOutput(
-        elements, statis, charsPerMinu, dialCharsPerMinu, fisrtScencStarted, startChars);
+
+    
+    result = ParserOutput(
+        elements, statis, charsPerMinu, dialCharsPerMinu, fisrtScencStarted, startChars, false);
+        
+    callAllCallbacks(result!);
+        
+    return result!;
+  }
+  
+  void removeAllCallbacks() {
+    callbacks.clear();
+  }
+  
+  void addCallback(CallbackParser callback) {
+    callbacks.add(callback);
+  }
+  
+  void addAllCallbacks(List<CallbackParser> callbacks) {
+    this.callbacks.addAll(callbacks);
+  }
+  
+  void callAllCallbacks(ParserOutput result) {
+    for (var callback in callbacks) {
+      callback(result);
+    }
   }
 }

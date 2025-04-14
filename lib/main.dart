@@ -86,7 +86,11 @@ class _EditorScreenState extends State<EditorScreen> {
 
   int _lastSelection = -1;
 
+  List<FountainElement> _elements = [];
+
   int _lastFormatingFullTime = 0;
+  Map<String, int> _lastParserFullTime = {};
+  Map<String, FountainParser> _parser = {};
   int _lastTapSliderTime = 0;
   int _startChars = 0; //第一个场景之前的字数，作用是预估时间需要减去。
   double _charsPerMinu = 243.22; //按每分钟多少个字预估， （全文，不区分对白）。
@@ -105,130 +109,25 @@ class _EditorScreenState extends State<EditorScreen> {
 
   // 获取可见区域文本，基于光标位置的一个有限范围进行。
   Future<void> formatVisibleText() async {
-    // // 获取可见区域的行范围
-    // final firstVisibleLine = _getFirstVisibleLine(_scrollController);
-    // final lastVisibleLine = _getLastVisibleLine(_scrollController);
+    var minOffset = _quillController.selection.baseOffset - 300;
+    var maxOffset = _quillController.selection.extentOffset + 300;
 
-    // // 获取可见区域的文本
-    // final fullText = _quillController.document.toPlainText();
-    // final lines = fullText.split('\n');
-
-    // int beforTextOffset = 0;
-    // if (firstVisibleLine > 0) {
-    //   final beforeText = lines.sublist(0, firstVisibleLine).join('\n');
-    //   beforTextOffset = beforeText.length;
-    // }
-    // final visibleText =
-    //     lines.sublist(firstVisibleLine, lastVisibleLine + 1).join('\n');
-
-    final fullText = _quillController.document.toPlainText();
-
-    // final selection = _quillController.selection;
-    int preChar;
-    int sufChar;
-    if (_onlyEditRefresh) {
-      preChar = 20;
-      sufChar = 20;
-    } else {
-      preChar = 150;
-      sufChar = 300;
-      //差不多一页范围
-    }
-
-    int beforTextOffset = 0;
-    // find beforTextOffset
-    int tempEnd = _quillController.selection.baseOffset - preChar;
-    if (tempEnd > 0) {
-      int tempStart = tempEnd;
-      while (true) {
-        tempStart -= 30;
-        if (tempStart <= 0) {
-          break;
-        }
-        var tempStr = fullText.substring(tempStart, tempEnd);
-        var i = tempStr.indexOf('\n\n');
-        if (i >= 0) {
-          var comm = fullText.substring(
-              tempStart + i, _quillController.selection.baseOffset);
-          // 假设 [[]] 和 /* */ 不存在相互嵌套的简单情况处理
-          var j1 = comm.indexOf(']]');
-          if (j1 >= 0) {
-            var j2 = comm.indexOf('[[');
-            if (j2 < 0 || j2 > j1) {
-              //截断的 注释，继续往前找
-              continue;
-            }
-          }
-          var k1 = comm.indexOf('*/');
-          if (k1 >= 0) {
-            var k2 = comm.indexOf('/*');
-            if (k2 < 0 || k2 > k1) {
-              //截断的 注释，继续往前找
-              continue;
-            }
-          }
-          beforTextOffset = tempStart + i;
-          break;
-        }
-      }
-    }
-
-    int end = _quillController.selection.extentOffset + sufChar;
-    if (end >= fullText.length) {
-      end = fullText.length;
-    } else {
-      int tempStart = end;
-      tempEnd = tempStart;
-      while (true) {
-        tempEnd += 30;
-        if (tempEnd >= fullText.length) {
-          end = fullText.length;
-          break;
-        }
-        var tempStr = fullText.substring(tempStart, tempEnd);
-        var i = tempStr.lastIndexOf('\n\n');
-        if (i >= 0) {
-          var comm = fullText.substring(
-              _quillController.selection.baseOffset, tempStart + i);
-          // 假设 [[]] 和 /* */ 不存在相互嵌套的简单情况处理
-          var j1 = comm.lastIndexOf('[[');
-          if (j1 >= 0) {
-            var j2 = comm.lastIndexOf(']]');
-            if (j2 < 0 || j2 < j1) {
-              //截断的 注释，继续往前找
-              continue;
-            }
-          }
-          var k1 = comm.lastIndexOf('/*');
-          if (k1 >= 0) {
-            var k2 = comm.lastIndexOf('*/');
-            if (k2 < 0 || k2 < k1) {
-              //截断的 注释，继续往前找
-              continue;
-            }
-          }
-          end = tempStart + i;
-          break;
-        }
-      }
-    }
-    // len = len - beforTextOffset;
-    // if (len < 0) {
-    //   len = 0;
-    // }
-    final visibleText = fullText.substring(beforTextOffset, end);
-
-    // 解析并格式化可见文本
-    final parsed = await compute<Map<String, dynamic>, ParserOutput>(
-      (Map<String, dynamic> params) {
-        final text = params['text'] as String;
-        final parser = FountainParser();
-        return parser.parse(false, text);
-      },
-      {'text': visibleText},
-    );
+    final tot = _elements.length;
     RT:
-    for (final element in parsed.elements) {
+    for (var i = 0; i < tot; i++) {
+      final element = _elements[i];
+
+      if (element.range.start + element.range.length < minOffset) {
+        continue;
+      }
+      if (element.range.start > maxOffset) {
+        break;
+      }
+
+      if (element.formated) {
+        continue;
+      }
+
       final styles = _getStyleForElement(element);
       if (styles != null) {
         for (var style in styles) {
@@ -236,8 +135,9 @@ class _EditorScreenState extends State<EditorScreen> {
             if (_formatQueue.length >= _maxQueueLength) {
               break RT;
             }
-            await formatText(element.range.start + beforTextOffset,
-                element.range.length, style, false);
+            await formatText(
+                element.range.start, element.range.length, style, false);
+            _elements[i].formated = true;
             //await 延迟
             await Future.delayed(const Duration(milliseconds: 2));
           }
@@ -253,28 +153,50 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   // 全文解析一次，并重置统计信息。
-  Future<ParserOutput> parseFullTextAndStatis() async {
+  Future<bool> parseFullTextAndStatis(String scene, Function? callback) async {
+    final int thisParserTime =
+        (DateTime.now().millisecondsSinceEpoch / 1000).toInt();
+    if (thisParserTime == _lastParserFullTime[scene]) {
+      return false;
+    }
+    _lastParserFullTime[scene] = thisParserTime;
+
     final fullText = _quillController.document.toPlainText();
     // _stateStatisNotifier.value = null;
 
     // 解析并格式化可见文本
+    if(_parser.containsKey(scene)){
+      _parser[scene]!.cancel = true;
+    }
+    final parser = FountainParser();
+    _parser[scene] = parser;
     // final parsed = await compute(_parseText, fullText);
     final parsed = await compute<Map<String, dynamic>, ParserOutput>(
       (Map<String, dynamic> params) {
         final text = params['text'] as String;
-        final parser = FountainParser();
         return parser.parse(true, text);
       },
       {'text': fullText},
     );
+
+    if ((_lastParserFullTime.containsKey(scene) &&
+            _lastParserFullTime[scene]! > thisParserTime) ||
+        parsed.canceled) {
+      return false;
+    }
 
     _stateStatisNotifier.value = parsed.statis;
     fisrtScencStarted = parsed.fisrtScencStarted;
     _charsPerMinu = parsed.charsPerMinu;
     _dialCharsPerMinu = parsed.dialCharsPerMinu;
     _startChars = parsed.startChars;
-    
-    return parsed;
+    _elements = parsed.elements;
+
+    if (callback != null) {
+      callback();
+    }
+
+    return true;
   }
 
   // 全文格式一次
@@ -287,13 +209,17 @@ class _EditorScreenState extends State<EditorScreen> {
     _lastFormatingFullTime = thisFormatFullTime;
     _stateBarMsgNotifier.value = '全文语法样式刷新中...'; //状态栏显示状态。
 
-    var parsed = await parseFullTextAndStatis();
+    var succ = await parseFullTextAndStatis("refresh", null);
+    if (!succ) {
+      return;
+    }
 
     bool wasBreak = false;
-    var i = 0;
-    final tot = parsed.elements.length;
+    // var i = 0;
+    final tot = _elements.length;
     RTF:
-    for (final element in parsed.elements) {
+    for (var i = 0; i < tot; i++) {
+      final element = _elements[i];
       final styles = _getStyleForElement(element);
       if (styles != null) {
         for (var style in styles) {
@@ -304,6 +230,7 @@ class _EditorScreenState extends State<EditorScreen> {
             }
             await formatText(
                 element.range.start, element.range.length, style, false);
+            _elements[i].formated = true;
             // count++;
             // if (count >= 100) {
             //   count = 0;
@@ -318,12 +245,12 @@ class _EditorScreenState extends State<EditorScreen> {
         }
       }
 
-      i++;
       var progress = '';
-      if (i >= tot) {
+      var j = i + 1;
+      if (j >= tot) {
         progress = '100%';
       } else {
-        progress = '${(i / tot * 100).toStringAsFixed(0)}%';
+        progress = '${(j / tot * 100).toStringAsFixed(0)}%';
       }
       if (!_stateBarMsgNotifier.value.startsWith('打开文件')) {
         _stateBarMsgNotifier.value = '全文语法样式刷新中... ($progress)';
@@ -392,9 +319,11 @@ class _EditorScreenState extends State<EditorScreen> {
               change.change.last.key != 'delete')) {
         return;
       }
-      if (_onlyEditRefresh) {
-        addFormatTask();
-      }
+      parseFullTextAndStatis("edit",() {
+        if (_onlyEditRefresh) {
+          addFormatTask();
+        }
+      });
     });
 
     // 监听光标位置变化
