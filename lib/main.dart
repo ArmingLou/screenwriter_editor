@@ -252,19 +252,10 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
-  // 全文格式一次
-  Future<void> formatFullText() async {
-    final int thisFormatFullTime =
-        (DateTime.now().millisecondsSinceEpoch / 1000).toInt();
-    if (thisFormatFullTime == _lastFormatingFullTime) {
-      return;
-    }
-    _lastFormatingFullTime = thisFormatFullTime;
-    _stateBarMsgNotifier.value = '全文语法样式刷新中...'; //状态栏显示状态。
-
-    // final selection = _quillController.selection;
+  // 全文解析一次，并重置统计信息。
+  Future<ParserOutput> parseFullTextAndStatis() async {
     final fullText = _quillController.document.toPlainText();
-    _stateStatisNotifier.value = null;
+    // _stateStatisNotifier.value = null;
 
     // 解析并格式化可见文本
     // final parsed = await compute(_parseText, fullText);
@@ -278,58 +269,31 @@ class _EditorScreenState extends State<EditorScreen> {
     );
 
     _stateStatisNotifier.value = parsed.statis;
-    // var count = 0;
+    fisrtScencStarted = parsed.fisrtScencStarted;
+    _charsPerMinu = parsed.charsPerMinu;
+    _dialCharsPerMinu = parsed.dialCharsPerMinu;
+    _startChars = parsed.startChars;
+    
+    return parsed;
+  }
+
+  // 全文格式一次
+  Future<void> formatFullText() async {
+    final int thisFormatFullTime =
+        (DateTime.now().millisecondsSinceEpoch / 1000).toInt();
+    if (thisFormatFullTime == _lastFormatingFullTime) {
+      return;
+    }
+    _lastFormatingFullTime = thisFormatFullTime;
+    _stateBarMsgNotifier.value = '全文语法样式刷新中...'; //状态栏显示状态。
+
+    var parsed = await parseFullTextAndStatis();
 
     bool wasBreak = false;
-
-    fisrtScencStarted = false;
-    _charsPerMinu = 243.22;
-    _dialCharsPerMinu = 171;
-    // int tempStartChars = 0;
-
     var i = 0;
     final tot = parsed.elements.length;
     RTF:
     for (final element in parsed.elements) {
-      if (!fisrtScencStarted && thisFormatFullTime == _lastFormatingFullTime) {
-        if (element.type == 'scene_heading') {
-          fisrtScencStarted = true;
-          _startChars = element.range.start + element.range.length;
-        } else {
-          if (element.type != 'comment') {
-            // comment 是重复的字数。
-            // tempStartChars += element.range.length + 1; // 加个换行符的数量1.
-            // 简单地从metadata中找到 每分钟多少个字的配置。前提是这个json配置的字段，格式上要单独一行。
-            int i = element.text.indexOf('"chars_per_minu"');
-            if (i > 0) {
-              String s = element.text.substring(i + 16);
-              int j = s.indexOf(',');
-              String v = '';
-              if (j > 1) {
-                v = s.substring(s.indexOf(':') + 1, j);
-                _charsPerMinu = double.parse(v.trim());
-              } else if (j == -1) {
-                v = s.substring(s.indexOf(':') + 1);
-                _charsPerMinu = double.parse(v.trim());
-              }
-            }
-            // 简单地从metadata中找到 对白每分钟多少个字的配置。前提是这个json配置的字段，格式上要单独一行。
-            int ii = element.text.indexOf('"dial_chars_per_minu"');
-            if (ii > 0) {
-              String s = element.text.substring(ii + 21);
-              int jj = s.indexOf(',');
-              String v = '';
-              if (jj > 1) {
-                v = s.substring(s.indexOf(':') + 1, jj);
-                _dialCharsPerMinu = double.parse(v.trim());
-              } else if (jj == -1) {
-                v = s.substring(s.indexOf(':') + 1);
-                _dialCharsPerMinu = double.parse(v.trim());
-              }
-            }
-          }
-        }
-      }
       final styles = _getStyleForElement(element);
       if (styles != null) {
         for (var style in styles) {
@@ -1170,7 +1134,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   IconButton(
                     icon: Icon(
                       _showToolbar ? Icons.build_circle : Icons.build,
-                      size: _showToolbar ?18:14,
+                      size: _showToolbar ? 18 : 14,
                       color: _showToolbar ? Colors.blue : Colors.grey,
                     ),
                     tooltip: _showToolbar ? '隐藏工具栏' : '显示工具栏',

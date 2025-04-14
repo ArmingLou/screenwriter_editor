@@ -4,7 +4,12 @@ import 'package:screenwriter_editor/statis.dart';
 class ParserOutput {
   final List<FountainElement> elements;
   final Statis? statis;
-  ParserOutput(this.elements, this.statis);
+  final double charsPerMinu; //按每分钟多少个字预估， （全文，不区分对白）。
+  final double dialCharsPerMinu; //按每分钟多少个字预估, （只针对 对白）。
+  final bool fisrtScencStarted;
+  final int startChars; //第一个场景之前的字数，作用是预估时间需要减去。包含注解的字数。
+  ParserOutput(this.elements, this.statis, this.charsPerMinu,
+      this.dialCharsPerMinu, this.fisrtScencStarted, this.startChars);
 }
 
 class FountainElement {
@@ -206,8 +211,11 @@ class FountainParser {
     var dialogueStarted = false;
     var parentheticalStarted = "";
     var lastLineWasEmpty = true;
-    
+
     var fisrtScencStarted = false;
+    double charsPerMinu = 243.22; //按每分钟多少个字预估， （全文，不区分对白）。
+    double dialCharsPerMinu = 171; //按每分钟多少个字预估, （只针对 对白）。
+    int startChars = 0; //第一个场景之前的字数，作用是预估时间需要减去。
 
     for (var line in lines) {
       final trimmedLine = line.trim();
@@ -375,29 +383,61 @@ class FountainParser {
 
       // 所有 元素，都要处理注解。需放到最后处理，包含判断空行逻辑。
       var cm = findCommond(line, offset);
+      var textAfterComent = line;
       if (cm.elements.isNotEmpty) {
         elements.addAll(cm.elements);
+        textAfterComent = cm.left;
         if (cm.left.trim().isEmpty) {
           // 继承之前的 lastLineWasEmpty 值，不处理
         } else {
           lastLineWasEmpty = false;
-          if (statisDial) {
-            // 对话中有注解，减去注解的字数
-            statis.addCharacterChars(preCharater, cm.left.trim().length);
-          }
         }
       } else {
         // 本行没有任何注解
         lastLineWasEmpty = trimmedLine.isEmpty;
-        if (statisDial) {
-          // 对话中有注解，减去注解的字数
-          statis.addCharacterChars(preCharater, line.trim().length);
+      }
+
+      if (statisDial) {
+        statis.addCharacterChars(preCharater, textAfterComent.trim().length);
+      }
+
+      if (!fisrtScencStarted) {
+        startChars += length + 1; // 加上被split删去的换行符
+        // 视为标题页处理
+        // 简单地从metadata中找到 每分钟多少个字的配置。前提是这个json配置的字段，格式上要单独一行。
+        int i = textAfterComent.indexOf('"chars_per_minu"');
+        if (i > 0) {
+          String s = textAfterComent.substring(i + 16);
+          int j = s.indexOf(',');
+          String v = '';
+          if (j > 1) {
+            v = s.substring(s.indexOf(':') + 1, j);
+            charsPerMinu = double.parse(v.trim());
+          } else if (j == -1) {
+            v = s.substring(s.indexOf(':') + 1);
+            charsPerMinu = double.parse(v.trim());
+          }
+        }
+        // 简单地从metadata中找到 对白每分钟多少个字的配置。前提是这个json配置的字段，格式上要单独一行。
+        int ii = textAfterComent.indexOf('"dial_chars_per_minu"');
+        if (ii > 0) {
+          String s = textAfterComent.substring(ii + 21);
+          int jj = s.indexOf(',');
+          String v = '';
+          if (jj > 1) {
+            v = s.substring(s.indexOf(':') + 1, jj);
+            dialCharsPerMinu = double.parse(v.trim());
+          } else if (jj == -1) {
+            v = s.substring(s.indexOf(':') + 1);
+            dialCharsPerMinu = double.parse(v.trim());
+          }
         }
       }
 
       offset += length + 1; // +1 for newline
     }
 
-    return ParserOutput(elements, statis);
+    return ParserOutput(
+        elements, statis, charsPerMinu, dialCharsPerMinu, fisrtScencStarted, startChars);
   }
 }
