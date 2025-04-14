@@ -79,6 +79,9 @@ class _EditorScreenState extends State<EditorScreen> {
 
   final double _sliderWidth = 180;
 
+  // 控制工具栏显示/隐藏的状态变量
+  bool _showToolbar = false;
+
   // Statis? statisGlobal;
 
   int _lastSelection = -1;
@@ -281,7 +284,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
     fisrtScencStarted = false;
     _charsPerMinu = 243.22;
-    _dialCharsPerMinu = 171; 
+    _dialCharsPerMinu = 171;
     // int tempStartChars = 0;
 
     var i = 0;
@@ -998,6 +1001,72 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
+  // 创建工具栏组件
+  Widget _buildToolbar() {
+    return Container(
+      height: 30,
+      color: const Color.fromARGB(255, 240, 240, 240),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.format_bold),
+            tooltip: '加粗',
+            onPressed: () {
+              // 功能待实现
+            },
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+          IconButton(
+            icon: const Icon(Icons.format_italic),
+            tooltip: '斜体',
+            onPressed: () {
+              // 功能待实现
+            },
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+          IconButton(
+            icon: const Icon(Icons.format_underlined),
+            tooltip: '下划线',
+            onPressed: () {
+              // 功能待实现
+            },
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+          IconButton(
+            icon: const Icon(Icons.format_align_left),
+            tooltip: '左对齐',
+            onPressed: () {
+              // 功能待实现
+            },
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+          IconButton(
+            icon: const Icon(Icons.format_align_center),
+            tooltip: '居中对齐',
+            onPressed: () {
+              // 功能待实现
+            },
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 切换工具栏显示/隐藏
+  void _toggleToolbar() {
+    setState(() {
+      _showToolbar = !_showToolbar;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1045,6 +1114,8 @@ class _EditorScreenState extends State<EditorScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            // 根据状态显示或隐藏工具栏
+            if (_showToolbar) _buildToolbar(),
             Expanded(
               child: QuillEditor(
                 focusNode: _focusNode,
@@ -1095,6 +1166,22 @@ class _EditorScreenState extends State<EditorScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  // 工具栏切换按钮
+                  IconButton(
+                    icon: Icon(
+                      _showToolbar ? Icons.build_circle : Icons.build,
+                      size: _showToolbar ?18:14,
+                      color: _showToolbar ? Colors.blue : Colors.grey,
+                    ),
+                    tooltip: _showToolbar ? '隐藏工具栏' : '显示工具栏',
+                    onPressed: () {
+                      setState(() {
+                        _showToolbar = !_showToolbar;
+                      });
+                    },
+                    padding: EdgeInsets.zero,
+                    constraints: BoxConstraints(),
+                  ),
                   ValueListenableBuilder<Statis?>(
                     valueListenable: _stateStatisNotifier,
                     builder: (context, statis, _) {
