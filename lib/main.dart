@@ -1399,7 +1399,7 @@ Metadata: {
                   // 代码片段
                   Builder(
                     builder: (context) => IconButton(
-                      icon: Icon(Icons.insert_drive_file, size: iconSize),
+                      icon: Icon(Icons.integration_instructions_outlined , size: iconSize),
                       tooltip: '代码片段',
                       onPressed: () {
                         _showDropdownMenuOfSnippet(
@@ -1687,7 +1687,7 @@ Metadata: {
                       _showToolbar
                           ? Icons.tips_and_updates_rounded
                           : Icons.tips_and_updates_outlined,
-                      size: 18,
+                      size: 16,
                       color: _showToolbar ? Colors.blue : Colors.grey,
                     ),
                     tooltip: _showToolbar ? '隐藏工具栏' : '显示工具栏',
