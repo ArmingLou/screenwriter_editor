@@ -643,7 +643,7 @@ class _EditorScreenState extends State<EditorScreen> {
                 var dirPath = dir!.path;
                 final j = dirPath.indexOf('/Android/data/');
                 dirPath = dirPath.substring(0, j);
-                filePath = dirPath + '/' + filePath;
+                filePath = '$dirPath/$filePath';
               }
             }
             if (filePath == null) {
@@ -681,7 +681,7 @@ class _EditorScreenState extends State<EditorScreen> {
               _quillController.replaceText(
                   0,
                   _quillController.document.length - 1,
-                  '$content',
+                  content,
                   const TextSelection.collapsed(offset: 0));
 
               int total = _quillController.document.length - 1;
@@ -822,7 +822,7 @@ class _EditorScreenState extends State<EditorScreen> {
               var dirPath = dir!.path;
               final j = dirPath.indexOf('/Android/data/');
               dirPath = dirPath.substring(0, j);
-              filePath = dirPath + '/' + filePath;
+              filePath = '$dirPath/$filePath';
             }
           }
           if (filePath == null) {
@@ -840,7 +840,7 @@ class _EditorScreenState extends State<EditorScreen> {
           if (!fileName.endsWith('.fountain')) {
             fileName = '$fileName.fountain';
           }
-          savePath = f.parent.path + '/' + fileName;
+          savePath = '${f.parent.path}/$fileName';
 
           // 写入文件内容
           final file2 = File(savePath);
@@ -1433,7 +1433,7 @@ Metadata: {
         return;
 
       case "注释 /*  */":
-        _insertBracketsAtCursor("/**/");
+        _insertBracketsAtCursor("/*  */");
         return;
 
       case "括号 ()":
@@ -1612,20 +1612,6 @@ Metadata: {
                         splashRadius: 16.0,
                       ),
                     ),
-
-                    // 删除行
-                    Builder(
-                      builder: (context) => IconButton(
-                        icon: Icon(Icons.disabled_by_default_outlined,
-                            size: iconSize),
-                        tooltip: '删除行',
-                        onPressed: _deleteLine,
-                        padding: EdgeInsets.all(buttonPadding),
-                        constraints: buttonConstraints,
-                        visualDensity: VisualDensity.compact,
-                        splashRadius: 16.0,
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -1708,6 +1694,19 @@ Metadata: {
                     ),
                   ],
                 ),
+              ),
+            ),
+
+            // 删除行
+            Builder(
+              builder: (context) => IconButton(
+                icon: Icon(Icons.disabled_by_default_outlined, size: iconSize),
+                tooltip: '删除行',
+                onPressed: _deleteLine,
+                padding: EdgeInsets.all(buttonPadding),
+                constraints: buttonConstraints,
+                visualDensity: VisualDensity.compact,
+                splashRadius: 16.0,
               ),
             ),
 
