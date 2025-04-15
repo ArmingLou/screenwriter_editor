@@ -1376,6 +1376,7 @@ Metadata: {
     const double iconSize = 18.0; // 进一步缩小图标大小
     const double buttonWidth = 30.0; // 进一步缩小按钮宽度
     const double buttonPadding = 0.0; // 最小化按钮内边距
+    const Color disbaleColor = Color.fromARGB(20, 0, 0, 0);
 
     // 创建通用的按钮约束 - 使用非常紧凑的约束
     final buttonConstraints =
@@ -1418,7 +1419,7 @@ Metadata: {
                     // 场景位置按钮
                     Builder(
                       builder: (context) => IconButton(
-                        disabledColor: Color.fromARGB(20, 0, 0, 0),
+                        disabledColor: disbaleColor,
                         icon: Icon(Icons.place, size: iconSize),
                         tooltip: '场景位置',
                         onPressed: autoCompleteLocation.isEmpty
@@ -1541,7 +1542,7 @@ Metadata: {
                     // 刷新语法样式
                     Builder(
                       builder: (context) => IconButton(
-                        disabledColor: Color.fromARGB(20, 0, 0, 0),
+                        disabledColor: disbaleColor,
                         icon: Icon(Icons.refresh, size: iconSize),
                         tooltip: '刷新语法样式',
                         onPressed: _docChanged ? formatFullText : null,
@@ -1563,7 +1564,7 @@ Metadata: {
                     // 撤销
                     Builder(
                       builder: (context) => IconButton(
-                        disabledColor: Color.fromARGB(20, 0, 0, 0),
+                        disabledColor: disbaleColor,
                         icon: Icon(Icons.undo, size: iconSize),
                         tooltip: '撤销',
                         onPressed: _quillController.document.hasUndo
@@ -1579,7 +1580,7 @@ Metadata: {
                     // 重做
                     Builder(
                       builder: (context) => IconButton(
-                        disabledColor: Color.fromARGB(20, 0, 0, 0),
+                        disabledColor: disbaleColor,
                         icon: Icon(Icons.redo, size: iconSize),
                         tooltip: '重做',
                         onPressed: _quillController.document.hasRedo
