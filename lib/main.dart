@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter_quill/quill_delta.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:path/path.dart' as path;
@@ -73,6 +74,8 @@ class _EditorScreenState extends State<EditorScreen> {
   // String _currentFilePath = '';
   bool _onlyEditRefresh = true;
   //仅在输入或删除文本时，刷新光标附近文本的语法高亮；否则，只要光标位置改变，都刷新光标附近文本的语法高亮。
+  
+  final List<Delta> _lastRedo = [];
 
   final _formatQueue = <_FormatTask>[];
   static const _maxQueueLength = 2;
@@ -512,9 +515,13 @@ class _EditorScreenState extends State<EditorScreen> {
         } else {
           _historyRollback = true;
           _quillController.undo(); // 不能使用 _quillController.document.undo();
-          _quillController.document.history.stack.redo.removeLast();
+          _quillController.document.history.stack.redo.clear();
+          _quillController.document.history.stack.redo.addAll(_lastRedo);
           return;
         }
+      } else {
+        _lastRedo.clear();
+        _lastRedo.addAll(_quillController.document.history.stack.redo);
       }
       parseFullTextAndStatis("edit", () {
         if (_onlyEditRefresh) {
