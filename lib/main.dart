@@ -1418,9 +1418,12 @@ Metadata: {
                     // 场景位置按钮
                     Builder(
                       builder: (context) => IconButton(
+                        disabledColor: Color.fromARGB(20, 0, 0, 0),
                         icon: Icon(Icons.place, size: iconSize),
                         tooltip: '场景位置',
-                        onPressed: () {
+                        onPressed: autoCompleteLocation.isEmpty
+                            ? null
+                            : () {
                           _showDropdownMenu(
                               context, autoCompleteLocation, '场景位置');
                         },
