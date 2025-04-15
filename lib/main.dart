@@ -480,31 +480,6 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-  void _fixDocHistory() {
-    // 清理 撤销/重做历史中，修改样式的 变化 历史记录，只保留插入或者删除的记录
-    // 创建一个新列表，存储需要保留的元素
-    final undoToKeep = _quillController.document.history.stack.undo
-        .where((element) => element.last.isDelete || element.last.isInsert)
-        .toList();
-
-    // 清空原列表
-    _quillController.document.history.stack.undo.clear();
-
-    // 添加需要保留的元素
-    _quillController.document.history.stack.undo.addAll(undoToKeep);
-
-    // 同样处理 redo 列表
-    final redoToKeep = _quillController.document.history.stack.redo
-        .where((element) => element.last.isDelete || element.last.isInsert)
-        .toList();
-
-    // 清空原列表
-    _quillController.document.history.stack.redo.clear();
-
-    // 添加需要保留的元素
-    _quillController.document.history.stack.redo.addAll(redoToKeep);
-  }
-
   void _setupFormatListener() {
     // 监听文档变化
     _quillController.document.changes.listen((change) {
@@ -587,25 +562,6 @@ class _EditorScreenState extends State<EditorScreen> {
 
   void _onTapMoveSlider(PointerMoveEvent event) async {
     _onTapSlider(event);
-  }
-
-  int _getFirstVisibleLine(ScrollController scrollController) {
-    final offset = scrollController.offset;
-    const lineHeight = 20.0; // 假设每行高度为20px
-    final firstVisible = (offset / lineHeight).floor();
-    // 获取前10行，确保不小于0
-    return math.max(0, firstVisible - 10);
-  }
-
-  int _getLastVisibleLine(ScrollController scrollController) {
-    final offset = scrollController.offset;
-    final viewportHeight = MediaQuery.of(context).size.height;
-    const lineHeight = 20.0; // 假设每行高度为20px
-    final lastVisible = ((offset + viewportHeight) / lineHeight).ceil();
-    final totalLines =
-        _quillController.document.toPlainText().split('\n').length;
-    // 获取后10行，确保不超过总行数
-    return math.min(totalLines - 1, lastVisible + 10);
   }
 
   // 在isolate中解析文本
@@ -813,13 +769,7 @@ class _EditorScreenState extends State<EditorScreen> {
         }
         fileName = savePath.substring(savePath.lastIndexOf('/') + 1);
 
-        var plainText = _quillController.document.toPlainText();
-        if (plainText.endsWith('\n')) {
-          plainText = plainText.substring(
-              0,
-              plainText.length -
-                  1); //_quillController.document.toPlainText()方法，会自动在文末加一个\n换行符
-        }
+        var plainText = _docText();
         Uint8List bytes = Utf8Codec().encode(plainText);
 
         // 其他平台使用FilePicker选择保存位置
@@ -898,13 +848,7 @@ class _EditorScreenState extends State<EditorScreen> {
             _showError('新建文件失败: 文件名 [ $fileName ] 在相同目录下已存在，请换一个名称');
             return;
           }
-          var plainText = _quillController.document.toPlainText();
-          if (plainText.endsWith('\n')) {
-            plainText = plainText.substring(
-                0,
-                plainText.length -
-                    1); //_quillController.document.toPlainText()方法，会自动在文末加一个\n换行符
-          }
+          var plainText = _docText();
           await file2.writeAsString(plainText, flush: true);
 
           // if (savePath.isEmpty) {
@@ -976,13 +920,7 @@ class _EditorScreenState extends State<EditorScreen> {
         // }
       } else {
         // 写入文件内容
-        var plainText = _quillController.document.toPlainText();
-        if (plainText.endsWith('\n')) {
-          plainText = plainText.substring(
-              0,
-              plainText.length -
-                  1); //_quillController.document.toPlainText()方法，会自动在文末加一个\n换行符
-        }
+        var plainText = _docText();
         final file2 = File(savePath);
         await file2.writeAsString(plainText, flush: true);
       }
@@ -1171,16 +1109,81 @@ class _EditorScreenState extends State<EditorScreen> {
     _quillController.updateSelection(
         TextSelection.collapsed(offset: newPosition), ChangeSource.local);
   }
-  
+
+  String _docText() {
+    var plainText = _quillController.document.toPlainText();
+    if (plainText.endsWith('\n')) {
+      plainText = plainText.substring(
+          0,
+          plainText.length -
+              1); //_quillController.document.toPlainText()方法，会自动在文末加一个\n换行符
+    }
+    return plainText;
+  }
+
   // 找出光标当前位置，前后有换行符的内容，判断为行， 删除当前行
   void _deleteLine() {
-    final index = _quillController.selection.baseOffset;
-    final text = _quillController.document.toPlainText();
-    final start = text.lastIndexOf('\n', index - 1) + 1;
-    final end = text.indexOf('\n', index);
-    _quillController.replaceText(start, end - start, '', null);
-    _quillController.updateSelection(
-        TextSelection.collapsed(offset: start), ChangeSource.local);
+    try {
+      // 处理特殊情况：文本为空
+      if (_quillController.document.isEmpty()) {
+        return; // 文本为空，无需删除
+      }
+
+      // 获取当前文本内容
+      final text = _docText();
+
+      // 确保光标位置在文本范围内
+      int index = _quillController.selection.baseOffset;
+      if (index < 0) {
+        index = 0;
+      } else if (index > text.length) {
+        index = text.length;
+      }
+
+      // 找出光标前最近的换行符（包含该换行符）
+      int start;
+      if (index <= 0) {
+        // 如果光标在文档开头，则从文档开头开始删除
+        start = 0;
+      } else {
+        // 找出光标前最近的换行符
+        int lastNewLineIndex = text.lastIndexOf('\n', index - 1);
+        if (lastNewLineIndex >= 0) {
+          // 如果找到换行符，则从该换行符开始删除（包含该换行符）
+          start = lastNewLineIndex;
+        } else {
+          // 如果没有找到换行符，则从文档开头开始删除
+          start = 0;
+        }
+      }
+
+      // 找出光标后最近的换行符（不包含该换行符）
+      int end;
+      int nextNewLineIndex = text.indexOf('\n', index);
+      if (nextNewLineIndex >= 0) {
+        // 如果找到换行符，则删除到该换行符（不包含该换行符）
+        end = nextNewLineIndex;
+      } else {
+        // 如果没有找到换行符，则删除到文档结尾
+        end = text.length;
+      }
+      
+      if (end <= start) return; // 如果范围无效，直接返回
+
+      // 使用安全的方式执行删除操作
+      try {
+
+        // 执行删除操作
+        _quillController.replaceText(start, end - start, '', TextSelection.collapsed(offset: start));
+
+      } catch (e) {
+        // 如果删除操作失败，尝试使用更安全的方式
+        print('Error in _deleteLine: $e');
+      }
+    } catch (e) {
+      // 捕获所有异常，确保不会崩溃
+      print('Error in _deleteLine: $e');
+    }
   }
 
   // 光标向前移动
@@ -1456,7 +1459,7 @@ Metadata: {
       case "居中 > <":
         _insertBracketsAtCursor("><");
         return;
-        
+
       case "分页 ===":
         _insertTextAtCursor("===");
         return;
