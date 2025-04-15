@@ -1163,19 +1163,21 @@ class _EditorScreenState extends State<EditorScreen> {
       if (nextNewLineIndex >= 0) {
         // 如果找到换行符，则删除到该换行符（不包含该换行符）
         end = nextNewLineIndex;
+        if (start == 0) {
+          end++; // 如果从文档第一行，没有前面的换行符，需要包含后一个换行符
+        }
       } else {
         // 如果没有找到换行符，则删除到文档结尾
         end = text.length;
       }
-      
+
       if (end <= start) return; // 如果范围无效，直接返回
 
       // 使用安全的方式执行删除操作
       try {
-
         // 执行删除操作
-        _quillController.replaceText(start, end - start, '', TextSelection.collapsed(offset: start));
-
+        _quillController.replaceText(
+            start, end - start, '', TextSelection.collapsed(offset: start));
       } catch (e) {
         // 如果删除操作失败，尝试使用更安全的方式
         print('Error in _deleteLine: $e');
