@@ -1180,11 +1180,9 @@ class _EditorScreenState extends State<EditorScreen> {
             start, end - start, '', TextSelection.collapsed(offset: start));
       } catch (e) {
         // 如果删除操作失败，尝试使用更安全的方式
-        print('Error in _deleteLine: $e');
       }
     } catch (e) {
       // 捕获所有异常，确保不会崩溃
-      print('Error in _deleteLine: $e');
     }
   }
 
