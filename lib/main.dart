@@ -526,7 +526,7 @@ class _EditorScreenState extends State<EditorScreen> {
           return;
         } else {
           _historyRollback = true;
-          _quillController.document.undo();
+          _quillController.undo(); // 不能使用 _quillController.document.undo();
           _quillController.document.history.stack.redo.removeLast();
           return;
         }
