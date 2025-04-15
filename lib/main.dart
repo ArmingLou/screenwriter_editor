@@ -143,6 +143,7 @@ class _EditorScreenState extends State<EditorScreen> {
     "  (V. O.)"
   ];
   List<String> autoCompleteTransition = [
+    ">",
     ">叠化",
     ">淡出淡入",
     ">切到",
@@ -160,9 +161,18 @@ class _EditorScreenState extends State<EditorScreen> {
     "故事简介",
     "人设",
     "人设填空",
-    "[[]]",
-    "/* */",
-    "#",
+    "标注 [[]]",
+    "注释 /*  */",
+    "括号 ()",
+    "斜体     * *",
+    "粗体    ** **",
+    "粗斜体 *** ***",
+    "下划线 _ _",
+    "居中 > <",
+    "分页 ===",
+    "##",
+    "=",
+    "~",
   ];
 
   void addCompleteAfterParser(Statis statis) {
@@ -1137,6 +1147,42 @@ class _EditorScreenState extends State<EditorScreen> {
         TextSelection.collapsed(offset: newPosition), ChangeSource.local);
   }
 
+  // 在当前光标位置插入括号, 如果选择_quillController.selection选择的长度大于零，在 quillController.selection.baseOffset 插入括号的前半部，再插入原来内容，再插入括号后半部，最后光标在括号内
+  void _insertBracketsAtCursor(String brackets) {
+    final backetsHalfLen = brackets.length ~/ 2;
+    final index = _quillController.selection.baseOffset;
+    final length = _quillController.selection.extentOffset -
+        _quillController.selection.baseOffset;
+    if (length > 0) {
+      final text = _quillController.document
+          .toPlainText()
+          .substring(index, index + length);
+      _quillController.replaceText(
+          index,
+          length,
+          brackets.substring(0, backetsHalfLen) +
+              text +
+              brackets.substring(backetsHalfLen),
+          null);
+    } else {
+      _quillController.replaceText(index, 0, brackets, null);
+    }
+    final newPosition = index + backetsHalfLen + length;
+    _quillController.updateSelection(
+        TextSelection.collapsed(offset: newPosition), ChangeSource.local);
+  }
+  
+  // 找出光标当前位置，前后有换行符的内容，判断为行， 删除当前行
+  void _deleteLine() {
+    final index = _quillController.selection.baseOffset;
+    final text = _quillController.document.toPlainText();
+    final start = text.lastIndexOf('\n', index - 1) + 1;
+    final end = text.indexOf('\n', index);
+    _quillController.replaceText(start, end - start, '', null);
+    _quillController.updateSelection(
+        TextSelection.collapsed(offset: start), ChangeSource.local);
+  }
+
   // 光标向前移动
   void _moveCursorForward() {
     final currentPosition = _quillController.selection.baseOffset;
@@ -1284,17 +1330,17 @@ class _EditorScreenState extends State<EditorScreen> {
       ],
     ).then((String? selectedValue) {
       if (selectedValue != null) {
-        _insertTextAtCursor(_getSnippetByName(selectedValue));
+        _insertSnippetByName(selectedValue);
       }
     });
   }
 
-  String _getSnippetByName(String name) {
+  void _insertSnippetByName(String name) {
     switch (name) {
       case "Title Page":
         // 获取当前日期
         final currentDate = DateFormat('yyyy/MM/dd').format(DateTime.now());
-        return '''Title: **《》**
+        _insertTextAtCursor('''Title: **《》**
 Credit: 作者
 Author: Arming
 Draft Date: $currentDate
@@ -1334,29 +1380,41 @@ Metadata: {
         "note_line_height": 0.17,
         "page_number_top_margin": 0.4
     }
-}''';
+}''');
+        return;
+
       case "日期":
         final currentDate = DateFormat('yyyy/MM/dd').format(DateTime.now());
-        return currentDate;
+        _insertTextAtCursor(currentDate);
+        return;
+
       case "影片类型":
-        return '''#影片类型
+        _insertTextAtCursor('''#影片类型
 /* 情感类型 / 情节类型 / 情绪类型 */
-**类型：** ''';
+**类型：** ''');
+        return;
+
       case "一句话梗概":
-        return '''#一句话梗概
+        _insertTextAtCursor('''#一句话梗概
 **一句话梗概：**
-''';
+''');
+        return;
+
       case "故事简介":
-        return '''#故事简介
+        _insertTextAtCursor('''#故事简介
 **故事简介：**
-''';
+''');
+        return;
+
       case "人设":
-        return '''#人设
+        _insertTextAtCursor('''#人设
 **人物设定：**
 
-''';
+''');
+        return;
+
       case "人设填空":
-        return '''(基本信息)
+        _insertTextAtCursor('''(基本信息)
 (+可怜之处，最大困境)
 (-羡慕之处)
 (+过人之处)
@@ -1364,9 +1422,48 @@ Metadata: {
 (+光辉之处)
 (-不足之处)
 (=结局特质)
-''';
+''');
+        return;
+
+      case "标注 [[]]":
+        _insertBracketsAtCursor("[[]]");
+        return;
+
+      case "注释 /*  */":
+        _insertBracketsAtCursor("/**/");
+        return;
+
+      case "括号 ()":
+        _insertBracketsAtCursor("()");
+        return;
+
+      case "斜体     * *":
+        _insertBracketsAtCursor("**");
+        return;
+
+      case "粗体    ** **":
+        _insertBracketsAtCursor("****");
+        return;
+
+      case "粗斜体 *** ***":
+        _insertBracketsAtCursor("******");
+        return;
+
+      case "下划线 _ _":
+        _insertBracketsAtCursor("__");
+        return;
+
+      case "居中 > <":
+        _insertBracketsAtCursor("><");
+        return;
+        
+      case "分页 ===":
+        _insertTextAtCursor("===");
+        return;
+
       default:
-        return name;
+        _insertTextAtCursor(name);
+        return;
     }
   }
 
@@ -1425,9 +1522,9 @@ Metadata: {
                         onPressed: autoCompleteLocation.isEmpty
                             ? null
                             : () {
-                          _showDropdownMenu(
-                              context, autoCompleteLocation, '场景位置');
-                        },
+                                _showDropdownMenu(
+                                    context, autoCompleteLocation, '场景位置');
+                              },
                         padding: EdgeInsets.all(buttonPadding),
                         constraints: buttonConstraints,
                         visualDensity: VisualDensity.compact,
@@ -1437,7 +1534,7 @@ Metadata: {
                     // 时间标记按钮
                     Builder(
                       builder: (context) => IconButton(
-                        icon: Icon(Icons.access_time, size: iconSize),
+                        icon: Icon(Icons.wb_sunny_rounded, size: iconSize),
                         tooltip: '时间标记',
                         onPressed: () {
                           _showDropdownMenu(context, autoCompleteTime, '时间标记');
@@ -1483,7 +1580,7 @@ Metadata: {
                     // 转场标记按钮
                     Builder(
                       builder: (context) => IconButton(
-                        icon: Icon(Icons.compare_arrows, size: iconSize),
+                        icon: Icon(Icons.compare_sharp, size: iconSize),
                         tooltip: '转场标记',
                         onPressed: () {
                           _showDropdownMenu(
@@ -1506,6 +1603,20 @@ Metadata: {
                           _showDropdownMenuOfSnippet(
                               context, autoCompleteSnippet, '代码片段');
                         },
+                        padding: EdgeInsets.all(buttonPadding),
+                        constraints: buttonConstraints,
+                        visualDensity: VisualDensity.compact,
+                        splashRadius: 16.0,
+                      ),
+                    ),
+
+                    // 删除行
+                    Builder(
+                      builder: (context) => IconButton(
+                        icon: Icon(Icons.disabled_by_default_outlined,
+                            size: iconSize),
+                        tooltip: '删除行',
+                        onPressed: _deleteLine,
                         padding: EdgeInsets.all(buttonPadding),
                         constraints: buttonConstraints,
                         visualDensity: VisualDensity.compact,
