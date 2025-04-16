@@ -16,6 +16,7 @@ import 'fountain_parser.dart';
 import 'package:intl/intl.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:toastification/toastification.dart';
 
 void main() {
   runApp(const ScreenwriterEditorApp());
@@ -945,7 +946,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
       // 显示成功提示
       if (mounted) {
-        _showInfo('文件保存成功: $savePath');
+        _showSuccess('文件保存成功: $savePath');
       }
       _quillController.document.history.clear();
       setState(() {
@@ -961,18 +962,48 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red),
+  void _showError(String message, {int milliseconds = 2000}) {
+    _showToast(message, Colors.red, milliseconds);
+  }
+
+  void _showSuccess(String message, {int milliseconds = 2000}) {
+    // _showToast(message, Colors.green[300]!, milliseconds);
+    toastification.show(
+      context: context,
+      title: Text(message),
+      autoCloseDuration: Duration(milliseconds: milliseconds),
+      type: ToastificationType.success,
+      style: ToastificationStyle.flat,
+      alignment: Alignment.center,
+      primaryColor: Colors.green[700],
+      backgroundColor: Colors.green[300],
+      foregroundColor: Colors.white,
+      closeButton: ToastCloseButton(showType: CloseButtonShowType.none)
     );
   }
 
-  void _showInfo(String message, {int seconds = 2}) {
+  void _showInfo(String message, {int milliseconds = 2000}) {
+    // _showToast(message, Colors.green[300]!, milliseconds);
+    toastification.show(
+      context: context,
+      title: Text(message),
+      autoCloseDuration: Duration(milliseconds: milliseconds),
+      style: ToastificationStyle.simple,
+      alignment: Alignment.center,
+      primaryColor: Colors.green[700],
+      backgroundColor: Colors.blue[300],
+      foregroundColor: Colors.white,
+      closeButton: ToastCloseButton(showType: CloseButtonShowType.none)
+    );
+  }
+
+  void _showToast(String message, Color color, int milliseconds) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.green[300],
-          duration: Duration(seconds: seconds)),
+        content: Text(message),
+        backgroundColor: color,
+        duration: Duration(milliseconds: milliseconds),
+      ),
     );
   }
 

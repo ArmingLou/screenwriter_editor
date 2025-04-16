@@ -20,6 +20,7 @@ dependencies:
   permission_handler: ^11.4.0
   fl_chart: ^0.70.2
   fast_charts: ^0.2.2
+  toastification: ^3.0.2
 
 dev_dependencies:
   flutter_test:
