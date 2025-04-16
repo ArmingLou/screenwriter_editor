@@ -10,8 +10,11 @@ import 'package:flutter_quill/quill_delta.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:path/path.dart' as path;
+import 'package:screenwriter_editor/socket_service.dart';
+import 'package:screenwriter_editor/socket_settings_page.dart';
 import 'package:screenwriter_editor/statis.dart';
 import 'package:screenwriter_editor/stats_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'fountain_parser.dart';
 import 'package:intl/intl.dart';
 import 'package:percent_indicator/percent_indicator.dart';
@@ -105,6 +108,10 @@ class _EditorScreenState extends State<EditorScreen> {
   int _lastReadOnlyInputTime = 0; // 最近一次只读模式下用户输入的时间
   Timer? _editIconBlinkTimer; // 编辑图标闪烁定时器
   Color _editIconColor = Colors.grey; // 编辑图标颜色
+
+  // Socket服务相关变量
+  final SocketService _socketService = SocketService();
+  StreamSubscription<SocketEvent>? _socketEventSubscription;
 
   // Statis? statisGlobal;
 
@@ -537,7 +544,7 @@ class _EditorScreenState extends State<EditorScreen> {
             _readOnlyInputCount = 0; // 重置计数器
             _startEditIconBlinking(); // 启动图标闪烁
           }
-          
+
           return;
         } else {
           _historyRollback = true;
@@ -617,6 +624,77 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
+  // 初始化Socket服务
+  void _initSocketService() async {
+    // 监听Socket事件
+    _socketEventSubscription = _socketService.events.listen((event) {
+      switch (event.type) {
+        case SocketEventType.auth:
+          // 处理认证事件
+          final success = event.content == 'success';
+          _showInfo('远程客户端${success ? '认证成功' : '认证失败'}');
+          break;
+        case SocketEventType.fetch:
+          // 发送当前编辑器内容给客户端
+          final content = _docText();
+          _socketService.sendContent(content, event.socket);
+          _showInfo('已将内容发送给远程客户端');
+          break;
+        case SocketEventType.push:
+          // 将客户端发送的内容替换到编辑器
+          if (event.content != null && event.content!.isNotEmpty) {
+            // var needPopEditbar = false;
+            if (!_editable) {
+              _editable = true; // 强制切换到编辑模式
+              // needPopEditbar = true;
+            }
+
+            _quillController.replaceText(
+                0,
+                _quillController.document.length - 1,
+                event.content!,
+                const TextSelection.collapsed(offset: 0));
+
+            int total = _quillController.document.length - 1;
+            if (total < 0) total = 0;
+            _charsLenNotifier.value = [
+              _quillController.selection.baseOffset,
+              total
+            ];
+            _showInfo('已从远程客户端接收并更新内容\n已切换到编辑模式');
+
+            // 触发格式更新
+            Future.delayed(const Duration(milliseconds: 2), () {
+              setState(() {});
+              formatFullText(); // 全文格式
+            });
+
+            // if (needPopEditbar) {
+            //   Future.delayed(const Duration(milliseconds: 5), () {
+            //     setState(() {});
+            //   });
+            // }
+          }
+          break;
+      }
+    });
+
+    // 从共享首选项中加载端口设置并自动启动服务器
+    final prefs = await SharedPreferences.getInstance();
+    final autoStart = prefs.getBool('socket_auto_start') ?? false;
+    if (autoStart) {
+      final port = prefs.getInt('socket_port') ?? 8080;
+      final password = prefs.getString('socket_password');
+      final success = await _socketService.startServer(port, password: password);
+      if (success) {
+        final securityStatus = password != null && password.isNotEmpty
+            ? '，已启用密码验证'
+            : '';
+        _showInfo('远程同步服务已自动启动，端口: $port$securityStatus');
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -631,6 +709,7 @@ class _EditorScreenState extends State<EditorScreen> {
     // _quillController.readOnly = !_editable;
 
     _setupFormatListener();
+    _initSocketService();
   }
 
   // 处理编辑图标闪烁效果
@@ -666,6 +745,8 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   void dispose() {
     _editIconBlinkTimer?.cancel();
+    _socketEventSubscription?.cancel();
+    _socketService.dispose();
     _quillController.dispose();
     super.dispose();
   }
@@ -2076,18 +2157,45 @@ Metadata: {
               color: Color.fromARGB(255, 210, 210, 210),
               padding: const EdgeInsets.symmetric(horizontal: 18),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  // 远程同步按钮
+                  ValueListenableBuilder<SocketServiceStatus>(
+                    valueListenable: _socketService.status,
+                    builder: (context, status, _) {
+                      final isRunning = status == SocketServiceStatus.running;
+                      return GestureDetector(
+                        child: Icon(
+                          isRunning ? Icons.link : Icons.link_off,
+                          color: isRunning ? Colors.green : null,
+                          size: 18,
+                        ),
+                        // tooltip: isRunning ? '远程同步服务已启动' : '远程同步设置',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const SocketSettingsPage(),
+                            ),
+                          );
+                        },
+                        // padding: EdgeInsets.zero,
+                        // constraints: BoxConstraints(),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 30),
                   // 工具栏切换按钮
-                  IconButton(
-                    icon: Icon(
+                  GestureDetector(
+                    child: Icon(
                       _editable ? Icons.edit_sharp : Icons.edit_off_sharp,
                       size: 16,
                       color:
                           _editable ? Colors.blue : _editIconColor, // 使用可变颜色变量
                     ),
-                    tooltip: '切换只读/编辑模式',
-                    onPressed: () {
+                    // tooltip: '切换只读/编辑模式',
+                    onTap: () {
                       _showInfo("进入${_editable ? '只读' : '编辑'}模式");
                       setState(() {
                         _editable = !_editable;
@@ -2101,18 +2209,20 @@ Metadata: {
                         // _quillController.readOnly = !_editable;
                       });
                     },
-                    padding: EdgeInsets.zero,
-                    constraints: BoxConstraints(),
+                    // padding: EdgeInsets.only(),
+                    // constraints: BoxConstraints(),
                   ),
+                  // 空白间距
+                  const SizedBox(width: 15),
                   ValueListenableBuilder<Statis?>(
                     valueListenable: _stateStatisNotifier,
                     builder: (context, statis, _) {
                       if (statis == null) {
                         return SizedBox.shrink();
                       } else {
-                        return IconButton(
-                          icon: Icon(Icons.bar_chart, size: 18),
-                          onPressed: () {
+                        return GestureDetector(
+                          child: Icon(Icons.bar_chart, size: 18),
+                          onTap: () {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -2123,15 +2233,15 @@ Metadata: {
                               ),
                             );
                           },
-                          padding: EdgeInsets.zero,
-                          constraints: BoxConstraints(),
+                          // padding: EdgeInsets.zero,
+                          // constraints: BoxConstraints(),
                         );
                       }
                     },
                   ),
                   Padding(
                     //左边添加8像素补白
-                    padding: EdgeInsets.only(left: 5),
+                    padding: EdgeInsets.only(left: 10),
                     child: Text(
                       '字数:',
                       style: const TextStyle(fontSize: 12),
