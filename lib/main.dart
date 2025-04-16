@@ -246,7 +246,7 @@ class _EditorScreenState extends State<EditorScreen> {
       if (time == "不确定") {
         continue;
       }
-      final formattedTime = " - $time";
+      final formattedTime = " - ${time.toUpperCase()}";
       if (!autoCompleteTime.contains(formattedTime)) {
         autoCompleteTime.add(formattedTime);
       }
