@@ -127,9 +127,7 @@ class _EditorScreenState extends State<EditorScreen> {
     ".(内外景) ",
     "INT. ",
     "EXT. ",
-    "INT./EXT. ",
     "INT/EXT. ",
-    "I/E. ",
     "EST. "
   ];
   List<String> autoCompleteLocation = [];
