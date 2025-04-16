@@ -74,7 +74,7 @@ class _EditorScreenState extends State<EditorScreen> {
   // String _currentFilePath = '';
   bool _onlyEditRefresh = true;
   //仅在输入或删除文本时，刷新光标附近文本的语法高亮；否则，只要光标位置改变，都刷新光标附近文本的语法高亮。
-  
+
   final List<Delta> _lastRedo = [];
 
   final _formatQueue = <_FormatTask>[];
@@ -945,12 +945,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
       // 显示成功提示
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('文件保存成功: $savePath'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        _showInfo('文件保存成功: $savePath');
       }
       _quillController.document.history.clear();
       setState(() {
@@ -968,7 +963,16 @@ class _EditorScreenState extends State<EditorScreen> {
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
+  }
+
+  void _showInfo(String message, {int seconds = 2}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.green[300],
+          duration: Duration(seconds: seconds)),
     );
   }
 
@@ -1995,8 +1999,9 @@ Metadata: {
                       size: 16,
                       color: _editable ? Colors.blue : Colors.grey,
                     ),
-                    tooltip: _editable ? '隐藏工具栏' : '显示工具栏',
+                    tooltip: '切换只读/编辑模式',
                     onPressed: () {
+                      _showInfo("进入${_editable ? '只读' : '编辑'}模式");
                       setState(() {
                         _editable = !_editable;
                         if (!_editable) {
