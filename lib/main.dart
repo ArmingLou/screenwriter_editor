@@ -100,6 +100,12 @@ class _EditorScreenState extends State<EditorScreen> {
   final int _cursorAccelerationStep = 5; // 每次加速减少的毫秒数
   int _longPressStartTime = 0; // 长按开始时间
 
+  // 只读模式下用户输入检测相关变量
+  int _readOnlyInputCount = 0; // 只读模式下用户输入次数
+  int _lastReadOnlyInputTime = 0; // 最近一次只读模式下用户输入的时间
+  Timer? _editIconBlinkTimer; // 编辑图标闪烁定时器
+  Color _editIconColor = Colors.grey; // 编辑图标颜色
+
   // Statis? statisGlobal;
 
   int _lastSelection = -1;
@@ -511,7 +517,29 @@ class _EditorScreenState extends State<EditorScreen> {
       if (!_editable) {
         // 实现编辑内容回滚，间接实现只读。
         if (_historyRollback) {
+          // undo 之后的回调。
           _historyRollback = false;
+
+          // 在只读模式下，用户操作了键盘输入
+          // 检测并计数用户输入
+          int currentTime = DateTime.now().millisecondsSinceEpoch;
+
+          // 如果距离上次输入超过3秒，重置计数器
+          if (currentTime - _lastReadOnlyInputTime > 3000) {
+            _readOnlyInputCount = 1;
+          } else {
+            _readOnlyInputCount++;
+          }
+
+          // 更新最近一次输入时间
+          _lastReadOnlyInputTime = currentTime;
+
+          // 如果5秒内触发了3次或以上，启动图标闪烁
+          if (_readOnlyInputCount >= 3) {
+            _readOnlyInputCount = 0; // 重置计数器
+            _startEditIconBlinking(); // 启动图标闪烁
+          }
+          
           return;
         } else {
           _historyRollback = true;
@@ -607,8 +635,39 @@ class _EditorScreenState extends State<EditorScreen> {
     _setupFormatListener();
   }
 
+  // 处理编辑图标闪烁效果
+  void _startEditIconBlinking() {
+    // 如果已经有定时器在运行，先取消
+    _editIconBlinkTimer?.cancel();
+
+    // 闪烁计数器
+    int blinkCount = 0;
+    const int totalBlinks = 25; // 闪烁次数
+
+    // 创建定时器，每0.5秒切换一次颜色
+    _editIconBlinkTimer =
+        Timer.periodic(const Duration(milliseconds: 100), (timer) {
+      setState(() {
+        // 在灰色和红色之间切换
+        _editIconColor =
+            _editIconColor == Colors.grey ? Colors.red : Colors.grey;
+      });
+
+      blinkCount++;
+      if (blinkCount >= totalBlinks) {
+        // 闪烁结束后恢复原来的颜色
+        setState(() {
+          _editIconColor = Colors.grey;
+        });
+        timer.cancel();
+        _editIconBlinkTimer = null;
+      }
+    });
+  }
+
   @override
   void dispose() {
+    _editIconBlinkTimer?.cancel();
     _quillController.dispose();
     super.dispose();
   }
@@ -969,32 +1028,30 @@ class _EditorScreenState extends State<EditorScreen> {
   void _showSuccess(String message, {int milliseconds = 2000}) {
     // _showToast(message, Colors.green[300]!, milliseconds);
     toastification.show(
-      context: context,
-      title: Text(message),
-      autoCloseDuration: Duration(milliseconds: milliseconds),
-      type: ToastificationType.success,
-      style: ToastificationStyle.flat,
-      alignment: Alignment.center,
-      primaryColor: Colors.green[700],
-      backgroundColor: Colors.green[300],
-      foregroundColor: Colors.white,
-      closeButton: ToastCloseButton(showType: CloseButtonShowType.none)
-    );
+        context: context,
+        title: Text(message),
+        autoCloseDuration: Duration(milliseconds: milliseconds),
+        type: ToastificationType.success,
+        style: ToastificationStyle.flat,
+        alignment: Alignment.center,
+        primaryColor: Colors.green[700],
+        backgroundColor: Colors.green[300],
+        foregroundColor: Colors.white,
+        closeButton: ToastCloseButton(showType: CloseButtonShowType.none));
   }
 
   void _showInfo(String message, {int milliseconds = 2000}) {
     // _showToast(message, Colors.green[300]!, milliseconds);
     toastification.show(
-      context: context,
-      title: Text(message),
-      autoCloseDuration: Duration(milliseconds: milliseconds),
-      style: ToastificationStyle.simple,
-      alignment: Alignment.center,
-      primaryColor: Colors.green[700],
-      backgroundColor: Colors.blue[300],
-      foregroundColor: Colors.white,
-      closeButton: ToastCloseButton(showType: CloseButtonShowType.none)
-    );
+        context: context,
+        title: Text(message),
+        autoCloseDuration: Duration(milliseconds: milliseconds),
+        style: ToastificationStyle.simple,
+        alignment: Alignment.center,
+        primaryColor: Colors.green[700],
+        backgroundColor: Colors.blue[300],
+        foregroundColor: Colors.white,
+        closeButton: ToastCloseButton(showType: CloseButtonShowType.none));
   }
 
   void _showToast(String message, Color color, int milliseconds) {
@@ -2028,7 +2085,8 @@ Metadata: {
                     icon: Icon(
                       _editable ? Icons.edit_sharp : Icons.edit_off_sharp,
                       size: 16,
-                      color: _editable ? Colors.blue : Colors.grey,
+                      color:
+                          _editable ? Colors.blue : _editIconColor, // 使用可变颜色变量
                     ),
                     tooltip: '切换只读/编辑模式',
                     onPressed: () {
@@ -2037,6 +2095,9 @@ Metadata: {
                         _editable = !_editable;
                         if (!_editable) {
                           _historyRollback = false;
+                          _editIconColor = Colors.grey; // 重置图标颜色
+                          _editIconBlinkTimer?.cancel(); // 取消正在进行的闪烁
+                          _editIconBlinkTimer = null;
                         }
                         // 更新编辑器的只读状态
                         // _quillController.readOnly = !_editable;
