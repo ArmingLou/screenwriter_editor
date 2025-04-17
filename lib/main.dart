@@ -632,7 +632,11 @@ class _EditorScreenState extends State<EditorScreen> {
         case SocketEventType.auth:
           // 处理认证事件
           final success = event.content == 'success';
-          _showInfo('远程客户端${success ? '认证成功' : '认证失败'}');
+          if(success){
+            _showSuccess('远程客户端认证成功');
+          } else {
+            _showError('远程客户端认证失败');
+          }
           break;
         case SocketEventType.fetch:
           // 发送当前编辑器内容给客户端
@@ -661,7 +665,7 @@ class _EditorScreenState extends State<EditorScreen> {
               _quillController.selection.baseOffset,
               total
             ];
-            _showInfo('已从远程客户端接收并更新内容\n已切换到编辑模式');
+            _showInfo('已从远程客户端接收并更新内容');
 
             // 触发格式更新
             Future.delayed(const Duration(milliseconds: 2), () {
@@ -690,7 +694,7 @@ class _EditorScreenState extends State<EditorScreen> {
       if (success) {
         final securityStatus =
             password != null && password.isNotEmpty ? '，已启用密码验证' : '';
-        _showInfo('远程同步服务已自动启动，端口: $port$securityStatus');
+        _showSuccess('远程同步服务已自动启动，端口: $port$securityStatus');
       }
     }
   }
