@@ -79,6 +79,7 @@ class StatsPage extends StatelessWidget {
   //通过字符串hash值获取颜色
   Color getColor(String str) {
     if (str.contains('日') ||
+        str.contains('上午') ||
         str.contains('正午') ||
         str.contains('下午') ||
         str.contains('午后') ||
@@ -99,6 +100,7 @@ class StatsPage extends StatelessWidget {
     if (str.contains('清晨') ||
         str.contains('早晨') ||
         str.contains('清早') ||
+        str.contains('早上') ||
         str.toLowerCase().contains('morning')) {
       return const Color.fromARGB(255, 247, 171, 100);
     }
