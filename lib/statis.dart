@@ -80,4 +80,12 @@ class Statis {
       }
     }
   }
+  
+  bool isEmpty(){
+    return (characters.isEmpty || characters.values.every((value) => value == 0)) &&
+        locations.isEmpty &&
+        times.isEmpty &&
+        intexts.isEmpty &&
+        locationsTime.isEmpty;
+  }
 }

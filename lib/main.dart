@@ -107,7 +107,7 @@ class _EditorScreenState extends State<EditorScreen> {
   int _readOnlyInputCount = 0; // 只读模式下用户输入次数
   int _lastReadOnlyInputTime = 0; // 最近一次只读模式下用户输入的时间
   Timer? _editIconBlinkTimer; // 编辑图标闪烁定时器
-  Color _editIconColor = Colors.grey; // 编辑图标颜色
+  Color _editIconColor = Colors.black; // 编辑图标颜色
 
   // Socket服务相关变量
   final SocketService _socketService = SocketService();
@@ -685,11 +685,11 @@ class _EditorScreenState extends State<EditorScreen> {
     if (autoStart) {
       final port = prefs.getInt('socket_port') ?? 8080;
       final password = prefs.getString('socket_password');
-      final success = await _socketService.startServer(port, password: password);
+      final success =
+          await _socketService.startServer(port, password: password);
       if (success) {
-        final securityStatus = password != null && password.isNotEmpty
-            ? '，已启用密码验证'
-            : '';
+        final securityStatus =
+            password != null && password.isNotEmpty ? '，已启用密码验证' : '';
         _showInfo('远程同步服务已自动启动，端口: $port$securityStatus');
       }
     }
@@ -727,14 +727,14 @@ class _EditorScreenState extends State<EditorScreen> {
       setState(() {
         // 在灰色和红色之间切换
         _editIconColor =
-            _editIconColor == Colors.grey ? Colors.red : Colors.grey;
+            _editIconColor == Colors.black ? Colors.red : Colors.black;
       });
 
       blinkCount++;
       if (blinkCount >= totalBlinks) {
         // 闪烁结束后恢复原来的颜色
         setState(() {
-          _editIconColor = Colors.grey;
+          _editIconColor = Colors.black;
         });
         timer.cancel();
         _editIconBlinkTimer = null;
@@ -1649,16 +1649,13 @@ Metadata: {
   }
 
   // 创建工具栏组件
+  final Color disbaleColor = Color.fromARGB(20, 0, 0, 0);
   Widget _buildToolbar() {
     // 定义图标大小和按钮大小，使其更紧凑
     const double iconSize = 18.0; // 进一步缩小图标大小
     const double buttonWidth = 30.0; // 进一步缩小按钮宽度
-    const double buttonPadding = 0.0; // 最小化按钮内边距
-    const Color disbaleColor = Color.fromARGB(20, 0, 0, 0);
-
-    // 创建通用的按钮约束 - 使用非常紧凑的约束
-    final buttonConstraints =
-        BoxConstraints.tightFor(width: buttonWidth, height: 30.0);
+    const VisualDensity visualDensity =
+        VisualDensity(horizontal: -1.0, vertical: -4.0); // 最小化按钮内边距
 
     return Column(mainAxisSize: MainAxisSize.min, children: [
       Container(
@@ -1688,10 +1685,7 @@ Metadata: {
                         onPressed: () {
                           _showDropdownMenu(context, autoCompleteScene, '场景标记');
                         },
-                        padding: EdgeInsets.all(buttonPadding),
-                        constraints: buttonConstraints,
-                        visualDensity: VisualDensity.compact,
-                        splashRadius: 16.0,
+                        visualDensity: visualDensity,
                       ),
                     ),
                     // 场景位置按钮
@@ -1706,10 +1700,7 @@ Metadata: {
                                 _showDropdownMenu(
                                     context, autoCompleteLocation, '场景位置');
                               },
-                        padding: EdgeInsets.all(buttonPadding),
-                        constraints: buttonConstraints,
-                        visualDensity: VisualDensity.compact,
-                        splashRadius: 16.0,
+                        visualDensity: visualDensity,
                       ),
                     ),
                     // 时间标记按钮
@@ -1720,10 +1711,7 @@ Metadata: {
                         onPressed: () {
                           _showDropdownMenu(context, autoCompleteTime, '时间标记');
                         },
-                        padding: EdgeInsets.all(buttonPadding),
-                        constraints: buttonConstraints,
-                        visualDensity: VisualDensity.compact,
-                        splashRadius: 16.0,
+                        visualDensity: visualDensity,
                       ),
                     ),
                     // 角色名称按钮
@@ -1735,10 +1723,7 @@ Metadata: {
                           _showDropdownMenu(
                               context, autoCompleteCharacter, '角色名称');
                         },
-                        padding: EdgeInsets.all(buttonPadding),
-                        constraints: buttonConstraints,
-                        visualDensity: VisualDensity.compact,
-                        splashRadius: 16.0,
+                        visualDensity: visualDensity,
                       ),
                     ),
 
@@ -1751,10 +1736,7 @@ Metadata: {
                           _showDropdownMenu(
                               context, autoCompleteVoice, '画外音/旁白');
                         },
-                        padding: EdgeInsets.all(buttonPadding),
-                        constraints: buttonConstraints,
-                        visualDensity: VisualDensity.compact,
-                        splashRadius: 16.0,
+                        visualDensity: visualDensity,
                       ),
                     ),
 
@@ -1767,10 +1749,7 @@ Metadata: {
                           _showDropdownMenu(
                               context, autoCompleteTransition, '转场标记');
                         },
-                        padding: EdgeInsets.all(buttonPadding),
-                        constraints: buttonConstraints,
-                        visualDensity: VisualDensity.compact,
-                        splashRadius: 16.0,
+                        visualDensity: visualDensity,
                       ),
                     ),
 
@@ -1784,10 +1763,7 @@ Metadata: {
                           _showDropdownMenuOfSnippet(
                               context, autoCompleteSnippet, '代码片段');
                         },
-                        padding: EdgeInsets.all(buttonPadding),
-                        constraints: buttonConstraints,
-                        visualDensity: VisualDensity.compact,
-                        splashRadius: 16.0,
+                        visualDensity: visualDensity,
                       ),
                     ),
                   ],
@@ -1824,10 +1800,8 @@ Metadata: {
                         icon: Icon(Icons.refresh, size: iconSize),
                         tooltip: '刷新语法样式',
                         onPressed: _docChanged ? formatFullText : null,
-                        padding: EdgeInsets.all(buttonPadding),
-                        constraints: buttonConstraints,
-                        visualDensity: VisualDensity.compact,
-                        splashRadius: 16.0,
+                        padding: EdgeInsets.only(right: 0, left: 0),
+                        visualDensity: visualDensity,
                       ),
                     ),
 
@@ -1848,10 +1822,7 @@ Metadata: {
                         onPressed: _quillController.document.hasUndo
                             ? _quillController.undo
                             : null,
-                        padding: EdgeInsets.all(buttonPadding),
-                        constraints: buttonConstraints,
-                        visualDensity: VisualDensity.compact,
-                        splashRadius: 16.0,
+                        visualDensity: visualDensity,
                       ),
                     ),
 
@@ -1864,10 +1835,7 @@ Metadata: {
                         onPressed: _quillController.document.hasRedo
                             ? _quillController.redo
                             : null,
-                        padding: EdgeInsets.all(buttonPadding),
-                        constraints: buttonConstraints,
-                        visualDensity: VisualDensity.compact,
-                        splashRadius: 16.0,
+                        visualDensity: visualDensity,
                       ),
                     ),
                   ],
@@ -1881,10 +1849,8 @@ Metadata: {
                 icon: Icon(Icons.disabled_by_default_outlined, size: iconSize),
                 tooltip: '删除行',
                 onPressed: _deleteLine,
-                padding: EdgeInsets.all(buttonPadding),
-                constraints: buttonConstraints,
-                visualDensity: VisualDensity.compact,
-                splashRadius: 16.0,
+                padding: EdgeInsets.only(right: 0, left: 0),
+                visualDensity: visualDensity,
               ),
             ),
 
@@ -2155,7 +2121,7 @@ Metadata: {
             Container(
               height: 24,
               color: Color.fromARGB(255, 210, 210, 210),
-              padding: const EdgeInsets.symmetric(horizontal: 18),
+              // padding: const EdgeInsets.symmetric(horizontal: 18),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 mainAxisAlignment: MainAxisAlignment.end,
@@ -2165,88 +2131,112 @@ Metadata: {
                     valueListenable: _socketService.status,
                     builder: (context, status, _) {
                       final isRunning = status == SocketServiceStatus.running;
-                      return GestureDetector(
-                        child: Icon(
-                          isRunning ? Icons.link : Icons.link_off,
-                          color: isRunning ? Colors.green : null,
-                          size: 18,
-                        ),
-                        // tooltip: isRunning ? '远程同步服务已启动' : '远程同步设置',
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const SocketSettingsPage(),
+                      return Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          child: SizedBox(
+                            width: 40,
+                            height: 24,
+                            child: Icon(
+                              isRunning ? Icons.link : Icons.link_off,
+                              color: isRunning ? Colors.green : null,
+                              size: 18,
                             ),
-                          );
-                        },
-                        // padding: EdgeInsets.zero,
-                        // constraints: BoxConstraints(),
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 30),
-                  // 工具栏切换按钮
-                  GestureDetector(
-                    child: Icon(
-                      _editable ? Icons.edit_sharp : Icons.edit_off_sharp,
-                      size: 16,
-                      color:
-                          _editable ? Colors.blue : _editIconColor, // 使用可变颜色变量
-                    ),
-                    // tooltip: '切换只读/编辑模式',
-                    onTap: () {
-                      _showInfo("进入${_editable ? '只读' : '编辑'}模式");
-                      setState(() {
-                        _editable = !_editable;
-                        if (!_editable) {
-                          _historyRollback = false;
-                          _editIconColor = Colors.grey; // 重置图标颜色
-                          _editIconBlinkTimer?.cancel(); // 取消正在进行的闪烁
-                          _editIconBlinkTimer = null;
-                        }
-                        // 更新编辑器的只读状态
-                        // _quillController.readOnly = !_editable;
-                      });
-                    },
-                    // padding: EdgeInsets.only(),
-                    // constraints: BoxConstraints(),
-                  ),
-                  // 空白间距
-                  const SizedBox(width: 15),
-                  ValueListenableBuilder<Statis?>(
-                    valueListenable: _stateStatisNotifier,
-                    builder: (context, statis, _) {
-                      if (statis == null) {
-                        return SizedBox.shrink();
-                      } else {
-                        return GestureDetector(
-                          child: Icon(Icons.bar_chart, size: 18),
+                          ),
+                          // tooltip: isRunning ? '远程同步服务已启动' : '远程同步设置',
                           onTap: () {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => StatsPage(
-                                  statis: statis,
-                                  dialCharsPerMinu: _dialCharsPerMinu,
-                                ),
+                                builder: (context) =>
+                                    const SocketSettingsPage(),
                               ),
                             );
                           },
                           // padding: EdgeInsets.zero,
                           // constraints: BoxConstraints(),
-                        );
-                      }
+                        ),
+                      );
                     },
                   ),
-                  Padding(
-                    //左边添加8像素补白
-                    padding: EdgeInsets.only(left: 10),
-                    child: Text(
+                  const SizedBox(width: 10),
+                  // 工具栏切换按钮
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      child: SizedBox(
+                        width: 30,
+                        height: 24,
+                        child: Icon(
+                          _editable ? Icons.edit_sharp : Icons.edit_off_sharp,
+                          size: 16,
+                          color: _editable
+                              ? Colors.green
+                              : _editIconColor, // 使用可变颜色变量
+                        ),
+                      ),
+                      // tooltip: '切换只读/编辑模式',
+                      onTap: () {
+                        _showInfo("进入${_editable ? '只读' : '编辑'}模式");
+                        setState(() {
+                          _editable = !_editable;
+                          if (!_editable) {
+                            _historyRollback = false;
+                            _editIconColor = Colors.black; // 重置图标颜色
+                            _editIconBlinkTimer?.cancel(); // 取消正在进行的闪烁
+                            _editIconBlinkTimer = null;
+                          }
+                          // 更新编辑器的只读状态
+                          // _quillController.readOnly = !_editable;
+                        });
+                      },
+                      // padding: EdgeInsets.only(),
+                      // constraints: BoxConstraints(),
+                    ),
+                  ),
+                  // 空白间距
+                  // const SizedBox(width: 15),
+                  ValueListenableBuilder<Statis?>(
+                    valueListenable: _stateStatisNotifier,
+                    builder: (context, statis, _) {
+                      final emp = statis == null || statis.isEmpty();
+                      return Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          child: SizedBox(
+                            width: 30,
+                            height: 24,
+                            child: Icon(Icons.bar_chart,
+                                size: 18,
+                                color: emp ? disbaleColor : Colors.black),
+                          ),
+                          onTap: () {
+                            if (!emp) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => StatsPage(
+                                    statis: statis,
+                                    dialCharsPerMinu: _dialCharsPerMinu,
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                          // padding: EdgeInsets.zero,
+                          // constraints: BoxConstraints(),
+                        ),
+                      );
+                    },
+                  ),
+                  SizedBox(width: 5),
+                  Text(
                       '字数:',
                       style: const TextStyle(fontSize: 12),
                     ),
-                  ),
                   Listener(
                     onPointerDown: _onTapDownSlider,
                     onPointerMove: _onTapMoveSlider,
@@ -2306,7 +2296,8 @@ Metadata: {
                         );
                       },
                     ),
-                  )
+                  ),
+                  SizedBox(width: 10),
                 ],
               ),
             ),
