@@ -80,6 +80,8 @@ class StatsPage extends StatelessWidget {
   Color getColor(String str) {
     if (str.contains('日') ||
         str.contains('正午') ||
+        str.contains('下午') ||
+        str.contains('午后') ||
         str.contains('白天') ||
         str.toLowerCase().contains('day')) {
       return const Color.fromARGB(255, 249, 91, 91);
@@ -102,6 +104,7 @@ class StatsPage extends StatelessWidget {
     }
     if (str.contains('黄昏') ||
         str.contains('傍晚') ||
+        str.toLowerCase().contains('evening') ||
         str.toLowerCase().contains('dusk')) {
       return const Color.fromARGB(255, 183, 65, 207);
     }
