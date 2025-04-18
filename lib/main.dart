@@ -165,7 +165,9 @@ class _EditorScreenState extends State<EditorScreen> {
     ">闪回",
     ">淡出",
     ">淡入",
-    ">闪回结束"
+    ">闪回结束",
+    ">{镜头交切}",
+    ">{结束交切}",
   ];
 
   List<String> autoCompleteSnippet = [
@@ -632,7 +634,7 @@ class _EditorScreenState extends State<EditorScreen> {
         case SocketEventType.auth:
           // 处理认证事件
           final success = event.content == 'success';
-          if(success){
+          if (success) {
             _showSuccess('远程客户端认证成功');
           } else {
             _showError('远程客户端认证失败');
@@ -1182,6 +1184,17 @@ class _EditorScreenState extends State<EditorScreen> {
           Attribute.fromKeyValue(Attribute.color.key, '#3CB371')
         ];
       case 'transition':
+        if (element.featureText.trim().startsWith('{') &&
+            element.featureText.trim().endsWith('}')) {
+          // 交切
+          return [
+            // Attribute.fromKeyValue(Attribute.font.key, "Courier"),
+            Attribute.fromKeyValue(Attribute.size.key, "18"),
+            Attribute.fromKeyValue(Attribute.bold.key, true),
+            Attribute.fromKeyValue(Attribute.italic.key, null),
+            Attribute.fromKeyValue(Attribute.color.key, '#d853ce')
+          ];
+        }
         return [
           // Attribute.fromKeyValue(Attribute.font.key, "Courier"),
           Attribute.fromKeyValue(Attribute.size.key, "14"),
@@ -2238,9 +2251,9 @@ Metadata: {
                   ),
                   SizedBox(width: 5),
                   Text(
-                      '字数:',
-                      style: const TextStyle(fontSize: 12),
-                    ),
+                    '字数:',
+                    style: const TextStyle(fontSize: 12),
+                  ),
                   Listener(
                     onPointerDown: _onTapDownSlider,
                     onPointerMove: _onTapMoveSlider,

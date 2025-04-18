@@ -9,17 +9,24 @@ class ParserOutput {
   final bool fisrtScencStarted;
   final int startChars; //第一个场景之前的字数，作用是预估时间需要减去。包含注解的字数。
   final bool canceled;
-  ParserOutput(this.elements, this.statis, this.charsPerMinu,
-      this.dialCharsPerMinu, this.fisrtScencStarted, this.startChars, this.canceled);
+  ParserOutput(
+      this.elements,
+      this.statis,
+      this.charsPerMinu,
+      this.dialCharsPerMinu,
+      this.fisrtScencStarted,
+      this.startChars,
+      this.canceled);
 }
 
 class FountainElement {
   final String type;
   final String text;
+  final String featureText; //方便实现某些功能的文本，每种type不一样。预留。
   final Range range;
   bool formated = false;
 
-  FountainElement(this.type, this.text, this.range);
+  FountainElement(this.type, this.text, this.featureText, this.range);
 }
 
 class Range {
@@ -39,14 +46,12 @@ class CommentResult {
 typedef CallbackParser = void Function(ParserOutput output);
 
 class FountainParser {
-  
   bool parseing = false;
   bool cancel = false;
   ParserOutput? result;
-  
+
   List<CallbackParser> callbacks = [];
-  
-  
+
   // 查找所有注释标记
   final commentPatterns = [
     ['[[', ']]'],
@@ -97,11 +102,13 @@ class FountainParser {
         elements.add(FountainElement(
           type,
           '', //注解不返回text内容。暂时不需要，看以后情况。
+          '', //注解不返回text内容。暂时不需要，看以后情况。
           Range(offset + idxStart, line.length - idxStart),
         ));
       } else {
         elements.add(FountainElement(
           type,
+          '', //注解不返回text内容。暂时不需要，看以后情况。
           '', //注解不返回text内容。暂时不需要，看以后情况。
           Range(offset + idxStart, idxEnd - idxStart + endTag.length),
         ));
@@ -138,7 +145,8 @@ class FountainParser {
       final match = FountainConstants.regex['character']!.firstMatch(text);
       if (match != null) {
         var name = trimCharacterName(text);
-        statis.addCharacterChars(name, 0);// 如果未开始第一额场景， 统计图标要将 0 的过滤； 但是 辅助自动输入需要可以 下拉选择。
+        statis.addCharacterChars(
+            name, 0); // 如果未开始第一额场景， 统计图标要将 0 的过滤； 但是 辅助自动输入需要可以 下拉选择。
         preCharater = name;
       }
     }
@@ -182,12 +190,14 @@ class FountainParser {
           ? locationText.substring(timeSplit.end).trim().toLowerCase()
           : '';
 
-      // 分割多个地点名称并生成Location列表
-      var names = locationPart
-          .split('/')
-          .map((name) => name.trim())
-          .where((name) => name.isNotEmpty)
-          .toList();
+      // // 分割多个地点名称并生成Location列表
+      // var names = locationPart
+      //     .split('/')
+      //     .map((name) => name.trim())
+      //     .where((name) => name.isNotEmpty)
+      //     .toList();
+
+      var names = [locationPart.trim()];
 
       // 遍历names
       for (var name in names) {
@@ -213,13 +223,12 @@ class FountainParser {
   }
 
   ParserOutput parse(bool doStatis, String text) {
-    
-    if(parseing || cancel){
+    if (parseing || cancel) {
       result = ParserOutput([], null, 0, 0, false, 0, true);
       return result!;
     }
     parseing = true;
-    
+
     commentStarted = -1;
     statis = Statis.empty();
 
@@ -237,13 +246,11 @@ class FountainParser {
     int startChars = 0; //第一个场景之前的字数，作用是预估时间需要减去。
 
     for (var line in lines) {
-      
-      if(cancel){
+      if (cancel) {
         result = ParserOutput([], null, 0, 0, false, 0, true);
         return result!;
       }
-      
-      
+
       final trimmedLine = line.trim();
       final length = line.length;
       var statisDial = false; //是否需要统计对话字数，需要在减去评论字数之后
@@ -262,6 +269,7 @@ class FountainParser {
               elements.add(FountainElement(
                 'parenthetical',
                 line,
+                '',
                 Range(offset, length),
               ));
               if (trimmedLine.endsWith(parentheticalStarted)) {
@@ -275,6 +283,7 @@ class FountainParser {
                 elements.add(FountainElement(
                   'parenthetical',
                   line,
+                  '',
                   Range(offset, length),
                 ));
               } else if (trimmedLine.startsWith('（')) {
@@ -284,6 +293,7 @@ class FountainParser {
                 elements.add(FountainElement(
                   'parenthetical',
                   line,
+                  '',
                   Range(offset, length),
                 ));
               } else {
@@ -291,6 +301,7 @@ class FountainParser {
                 elements.add(FountainElement(
                   'dialogue',
                   line,
+                  '',
                   Range(offset, length),
                 ));
                 if (doStatis && fisrtScencStarted) {
@@ -308,6 +319,7 @@ class FountainParser {
           elements.add(FountainElement(
             'scene_heading',
             line,
+            '',
             Range(offset, length),
           ));
           _processScene(doStatis, line);
@@ -316,13 +328,17 @@ class FountainParser {
           elements.add(FountainElement(
             'center',
             line,
+            '',
             Range(offset, length),
           ));
         } else if (lastLineWasEmpty &&
             FountainConstants.regex['transition']!.hasMatch(line)) {
+          var group2 = FountainConstants.regex['transition']!.firstMatch(line);
+          var group2Text = group2!.groupCount > 1 ? group2.group(2) : "";
           elements.add(FountainElement(
             'transition',
             line,
+            group2Text ?? '',
             Range(offset, length),
           ));
         }
@@ -334,30 +350,35 @@ class FountainParser {
           elements.add(FountainElement(
             'action',
             line,
+            '',
             Range(offset, length),
           ));
         } else if (FountainConstants.regex['section']!.hasMatch(line)) {
           elements.add(FountainElement(
             'sections',
             line,
+            '',
             Range(offset, length),
           ));
         } else if (FountainConstants.regex['page_break']!.hasMatch(line)) {
           elements.add(FountainElement(
             'page_breaks',
             line,
+            '',
             Range(offset, length),
           ));
         } else if (FountainConstants.regex['synopsis']!.hasMatch(line)) {
           elements.add(FountainElement(
             'synopses',
             line,
+            '',
             Range(offset, length),
           ));
         } else if (FountainConstants.regex['lyric']!.hasMatch(line)) {
           elements.add(FountainElement(
             'lyrics',
             line,
+            '',
             Range(offset, length),
           ));
         } else if (lastLineWasEmpty &&
@@ -366,6 +387,7 @@ class FountainParser {
           elements.add(FountainElement(
             'character',
             line,
+            '',
             Range(offset, length),
           ));
           _processCharater(doStatis, line);
@@ -373,6 +395,7 @@ class FountainParser {
           elements.add(FountainElement(
             'action',
             line,
+            '',
             Range(offset, length),
           ));
         }
@@ -384,12 +407,14 @@ class FountainParser {
               elements.add(FountainElement(
                 'parenthetical',
                 line,
+                '',
                 Range(offset, length),
               ));
             } else {
               elements.add(FountainElement(
                 'dialogue',
                 line,
+                '',
                 Range(offset, length),
               ));
               if (doStatis && fisrtScencStarted) {
@@ -401,6 +426,7 @@ class FountainParser {
             elements.add(FountainElement(
               'action',
               line,
+              '',
               Range(offset, length),
             ));
           }
@@ -463,28 +489,26 @@ class FountainParser {
       offset += length + 1; // +1 for newline
     }
 
+    result = ParserOutput(elements, statis, charsPerMinu, dialCharsPerMinu,
+        fisrtScencStarted, startChars, false);
 
-    
-    result = ParserOutput(
-        elements, statis, charsPerMinu, dialCharsPerMinu, fisrtScencStarted, startChars, false);
-        
     callAllCallbacks(result!);
-        
+
     return result!;
   }
-  
+
   void removeAllCallbacks() {
     callbacks.clear();
   }
-  
+
   void addCallback(CallbackParser callback) {
     callbacks.add(callback);
   }
-  
+
   void addAllCallbacks(List<CallbackParser> callbacks) {
     this.callbacks.addAll(callbacks);
   }
-  
+
   void callAllCallbacks(ParserOutput result) {
     for (var callback in callbacks) {
       callback(result);

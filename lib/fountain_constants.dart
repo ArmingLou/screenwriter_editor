@@ -14,7 +14,7 @@ class FountainConstants {
       unicode: true,
     ),
     'scene_number': RegExp(r'#(.+)#'),
-    'transition': RegExp(r'^\s*(?:(>)[^\n\r]*(?!<[ \t]*)|[A-Z ]+TO:)$'),
+    'transition': RegExp(r'^\s*(?:(>)([^\n\r]*(?!<[ \t]*))|[A-Z ]+TO:)$'),
     'character': FountainConstants.blockRegex['block_dialogue_begin']!,
     'parenthetical': RegExp(r'^[ \t]*(\(.+\)|（.+）)\s*$'),
     'parenthetical_start': RegExp(r'^[ \t]*(?:\(|（)[^\)）]*$'),
