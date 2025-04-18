@@ -128,46 +128,48 @@ class _EditorScreenState extends State<EditorScreen> {
   double _dialCharsPerMinu = 171; //按每分钟多少个字预估, （只针对 对白）。
   bool fisrtScencStarted = false;
 
-  List<String> autoCompleteScene = [
-    ".(内景) ",
-    ".(外景) ",
-    ".(内外景) ",
-    "INT. ",
-    "EXT. ",
-    "INT/EXT. ",
-    "EST. "
+  List<List<String>> autoCompleteScene = [
+    [".(内景) "],
+    [".(外景) "],
+    [".(内外景) "],
+    ["INT. "],
+    ["EXT. "],
+    ["INT/EXT. "],
+    ["EST. "]
   ];
-  List<String> autoCompleteLocation = [];
-  List<String> autoCompleteTime = [
-    " - 日",
-    " - 夜",
-    " - 黎明",
-    " - 清晨",
-    " - 傍晚",
-    " - DAY",
-    " - NIGHT",
-    " - DAWN",
-    " - MORNING",
-    " - DUSK"
+  List<List<String>> autoCompleteLocation = [];
+  List<List<String>> autoCompleteTime = [
+    [" - 日"],
+    [" - 夜"],
+    [" - 黎明"],
+    [" - 清晨"],
+    [" - 傍晚"],
+    [" - DAY"],
+    [" - NIGHT"],
+    [" - DAWN"],
+    [" - MORNING"],
+    [" - DUSK"]
   ];
-  List<String> autoCompleteCharacter = ["@"];
-  List<String> autoCompleteVoice = [
-    "  (画外音)",
-    "  (旁白)",
-    "  (O. S.)",
-    "  (V. O.)"
+  List<List<String>> autoCompleteCharacter = [["@"]];
+  List<List<String>> autoCompleteVoice = [
+    ["  (画外音)"],
+    ["  (旁白)"],
+    ["  (O. S.)"],
+    ["  (V. O.)"]
   ];
-  List<String> autoCompleteTransition = [
-    ">",
-    ">叠化",
-    ">淡出淡入",
-    ">切到",
-    ">闪回",
-    ">淡出",
-    ">淡入",
-    ">闪回结束",
-    ">{+镜头交切+}",
-    ">{-结束交切-}",
+  List<List<String>> autoCompleteTransition = [
+    [">"],
+    [">叠化"],
+    [">淡出淡入"],
+    [">切到"],
+    [">闪回"],
+    [">淡出"],
+    [">淡入"],
+    [">闪回结束"],
+    [">{=镜头交切=}", ">{=镜头交切=} (只含 以后 新场景)"],
+    [">{#镜头交切#}", ">{#镜头交切#} (含 前一.当前.以后 场景)"],
+    [">{+镜头交切+}", ">{+镜头交切+} (含 当前.以后 场景)"],
+    [">{-结束交切-}"],
   ];
 
   List<String> autoCompleteSnippet = [
@@ -216,7 +218,9 @@ class _EditorScreenState extends State<EditorScreen> {
       return isEnglishA ? -1 : 1;
     });
 
-    autoCompleteLocation.addAll(locationsList);
+    for (var location in locationsList) {
+      autoCompleteLocation.add([location]);
+    }
 
     // 处理 autoCompleteCharacter - 按字数降序排序
     autoCompleteCharacter.clear();
@@ -224,22 +228,28 @@ class _EditorScreenState extends State<EditorScreen> {
     characterEntries.sort((a, b) => b.value.compareTo(a.value)); // 按字数降序排序
     final sortedCharacters =
         characterEntries.map((entry) => entry.key).toList();
-    autoCompleteCharacter.add(""); //加一个空的
-    autoCompleteCharacter.addAll(sortedCharacters);
+    autoCompleteCharacter.add([""]); //加一个空的
+    for (var character in sortedCharacters) {
+      autoCompleteCharacter.add([character]);
+    }
     //autoCompleteCharacter 全部加上前缀“@”
-    autoCompleteCharacter = autoCompleteCharacter.map((e) => "@$e").toList();
+    List<List<String>> newAutoCompleteCharacter = [];
+    for (var item in autoCompleteCharacter) {
+      newAutoCompleteCharacter.add(["@${item[0]}"]);
+    }
+    autoCompleteCharacter = newAutoCompleteCharacter;
     // 处理 autoCompleteTime - 保持基础时间列表顺序，添加新时间
     final baseTimeList = [
-      " - 日",
-      " - 夜",
-      " - 黎明",
-      " - 清晨",
-      " - 傍晚",
-      " - DAY",
-      " - NIGHT",
-      " - DAWN",
-      " - MORNING",
-      " - DUSK"
+      [" - 日"],
+      [" - 夜"],
+      [" - 黎明"],
+      [" - 清晨"],
+      [" - 傍晚"],
+      [" - DAY"],
+      [" - NIGHT"],
+      [" - DAWN"],
+      [" - MORNING"],
+      [" - DUSK"]
     ];
     autoCompleteTime = List.from(baseTimeList);
 
@@ -248,7 +258,7 @@ class _EditorScreenState extends State<EditorScreen> {
       if (time == "不确定") {
         continue;
       }
-      final formattedTime = " - ${time.toUpperCase()}";
+      final formattedTime = [" - ${time.toUpperCase()}"];
       if (!autoCompleteTime.contains(formattedTime)) {
         autoCompleteTime.add(formattedTime);
       }
@@ -1184,8 +1194,12 @@ class _EditorScreenState extends State<EditorScreen> {
           Attribute.fromKeyValue(Attribute.color.key, '#3CB371')
         ];
       case 'transition':
-        if ((element.featureText.trim().startsWith('{+') &&
-            element.featureText.trim().endsWith('+}'))||
+        if ((element.featureText.trim().startsWith('{=') &&
+                element.featureText.trim().endsWith('=}')) ||
+            (element.featureText.trim().startsWith('{#') &&
+                element.featureText.trim().endsWith('#}')) ||
+            (element.featureText.trim().startsWith('{+') &&
+                element.featureText.trim().endsWith('+}')) ||
             (element.featureText.trim().startsWith('{-') &&
                 element.featureText.trim().endsWith('-}'))) {
           // 交切
@@ -1441,7 +1455,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
   // 显示下拉列表
   void _showDropdownMenu(
-      BuildContext context, List<String> items, String title) {
+      BuildContext context, List<List<String>> items, String title) {
     final RenderBox button = context.findRenderObject() as RenderBox;
     final RenderBox overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox;
@@ -1473,11 +1487,11 @@ class _EditorScreenState extends State<EditorScreen> {
           child: Text(title,
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.0)),
         ),
-        ...items.map((String item) => PopupMenuItem<String>(
-              value: item,
+        ...items.map((List<String> item) => PopupMenuItem<String>(
+              value: item[0],
               height: customMenuItemHeight,
               padding: customMenuItemPadding,
-              child: Text(item, style: TextStyle(fontSize: 13.0)),
+              child: Text(item.length > 1 ? item[1] : item[0], style: TextStyle(fontSize: 13.0)),
             )),
       ],
     ).then((String? selectedValue) {
