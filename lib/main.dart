@@ -166,8 +166,8 @@ class _EditorScreenState extends State<EditorScreen> {
     ">淡出",
     ">淡入",
     ">闪回结束",
-    ">{镜头交切}",
-    ">{结束交切}",
+    ">{+镜头交切+}",
+    ">{-结束交切-}",
   ];
 
   List<String> autoCompleteSnippet = [
@@ -1184,8 +1184,10 @@ class _EditorScreenState extends State<EditorScreen> {
           Attribute.fromKeyValue(Attribute.color.key, '#3CB371')
         ];
       case 'transition':
-        if (element.featureText.trim().startsWith('{') &&
-            element.featureText.trim().endsWith('}')) {
+        if ((element.featureText.trim().startsWith('{+') &&
+            element.featureText.trim().endsWith('+}'))||
+            (element.featureText.trim().startsWith('{-') &&
+                element.featureText.trim().endsWith('-}'))) {
           // 交切
           return [
             // Attribute.fromKeyValue(Attribute.font.key, "Courier"),
