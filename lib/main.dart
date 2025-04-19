@@ -150,7 +150,9 @@ class _EditorScreenState extends State<EditorScreen> {
     [" - MORNING"],
     [" - DUSK"]
   ];
-  List<List<String>> autoCompleteCharacter = [["@"]];
+  List<List<String>> autoCompleteCharacter = [
+    ["@"]
+  ];
   List<List<String>> autoCompleteVoice = [
     ["  (画外音)"],
     ["  (旁白)"],
@@ -180,6 +182,7 @@ class _EditorScreenState extends State<EditorScreen> {
     "故事简介",
     "人设",
     "人设填空",
+    "重复场景号 #\${}#",
     "标注 [[]]",
     "注释 /*  */",
     "括号 ()",
@@ -1298,7 +1301,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
   // 在当前光标位置插入括号, 如果选择_quillController.selection选择的长度大于零，在 quillController.selection.baseOffset 插入括号的前半部，再插入原来内容，再插入括号后半部，最后光标在括号内
   void _insertBracketsAtCursor(String brackets) {
-    final backetsHalfLen = brackets.length ~/ 2;
+    final backetsHalfLen = brackets.length % 2 == 0 ? brackets.length ~/ 2 : (brackets.length ~/ 2) + 1;
     final index = _quillController.selection.baseOffset;
     final length = _quillController.selection.extentOffset -
         _quillController.selection.baseOffset;
@@ -1491,7 +1494,8 @@ class _EditorScreenState extends State<EditorScreen> {
               value: item[0],
               height: customMenuItemHeight,
               padding: customMenuItemPadding,
-              child: Text(item.length > 1 ? item[1] : item[0], style: TextStyle(fontSize: 13.0)),
+              child: Text(item.length > 1 ? item[1] : item[0],
+                  style: TextStyle(fontSize: 13.0)),
             )),
       ],
     ).then((String? selectedValue) {
@@ -1637,6 +1641,10 @@ Metadata: {
 (-不足之处)
 (=结局特质)
 ''');
+        return;
+
+      case "重复场景号 #\${}#":
+        _insertBracketsAtCursor("#\${}#");
         return;
 
       case "标注 [[]]":

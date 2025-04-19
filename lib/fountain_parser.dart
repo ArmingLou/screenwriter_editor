@@ -52,6 +52,9 @@ class FountainParser {
 
   List<CallbackParser> callbacks = [];
 
+  Set<String> allSceneNum = {};
+  Map<String, String> dupSceneNum = {};
+
   // 查找所有注释标记
   final commentPatterns = [
     ['[[', ']]'],
@@ -161,6 +164,36 @@ class FountainParser {
         return;
       }
 
+      // 处理场景号
+      var nb = (allSceneNum.length + 1).toString();
+      var sceneNumber = sceneMatch.group(3) ?? '';
+      if (sceneNumber.isNotEmpty) {
+        final sceneNumberMatch =
+            FountainConstants.regex['scene_number']!.firstMatch(sceneNumber);
+        if (sceneNumberMatch != null && sceneNumberMatch.groupCount > 1) {
+          var nb2 = sceneNumberMatch.group(2) ?? '';
+          if (nb2.trim().isNotEmpty) {
+            nb = nb2;
+          }
+        }
+        if (sceneNumberMatch != null && sceneNumberMatch.groupCount > 0) {
+          var nb2 = sceneNumberMatch.group(1) ?? '';
+          if (nb2.trim().isNotEmpty) {
+            if (dupSceneNum.containsKey(nb2.trim())) {
+              nb = dupSceneNum[nb2.trim()]!;
+            } else {
+              dupSceneNum[nb2.trim()] = nb;
+            }
+          }
+        }
+      }
+      if (allSceneNum.contains(nb)) {
+        // 重复 场景号，免统计
+        return;
+      } else {
+        allSceneNum.add(nb);
+      }
+
       // 处理场景类型和内景/外景标记
       var locationText = sceneMatch.group(2) ?? '';
       var isInterior = sceneHeading.toLowerCase().contains('int');
@@ -244,6 +277,9 @@ class FountainParser {
     double charsPerMinu = 243.22; //按每分钟多少个字预估， （全文，不区分对白）。
     double dialCharsPerMinu = 171; //按每分钟多少个字预估, （只针对 对白）。
     int startChars = 0; //第一个场景之前的字数，作用是预估时间需要减去。
+
+    allSceneNum.clear();
+    dupSceneNum.clear();
 
     for (var line in lines) {
       if (cancel) {

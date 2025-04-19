@@ -9,11 +9,11 @@ class FountainConstants {
     'section': RegExp(r'^[ \t]*(#+)(?:\s*)(.*)'),
     'synopsis': RegExp(r'^[ \t]*(?:\=)(.*)'),
     'scene_heading': RegExp(
-      r'^[ \t]*([.](?=[\w\(（\p{L}])|(?:int|ext|est|int[.]?\/ext|i[.]?\/e)[. ])([^#]*)(#\s*[^\s].*#)?\s*$',
+      r'^[ \t]*([.](?=[\w\(（\p{L}])|(?:int|ext|est|int[.]?\/ext|i[.]?\/e)[. ])([^#\n]*)(#[ \t]*[^\s].*#)?[ \t]*$',
       caseSensitive: false,
       unicode: true,
     ),
-    'scene_number': RegExp(r'#(.+)#'),
+    'scene_number': RegExp(r'#\s*(?:\$\{\s*([^\}\s]*)\s*\})?\s*((?:(?!\$\{).)*)\s*#'),
     'transition': RegExp(r'^\s*(?:(>)([^\n\r]*(?!<[ \t]*))|[A-Z ]+TO:)$'),
     'character': FountainConstants.blockRegex['block_dialogue_begin']!,
     'parenthetical': RegExp(r'^[ \t]*(\(.+\)|（.+）)\s*$'),
