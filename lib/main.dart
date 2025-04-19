@@ -129,14 +129,14 @@ class _EditorScreenState extends State<EditorScreen> {
   bool fisrtScencStarted = false;
 
   static final List<List<String>> defaultAutoCompleteScene = [
-      [".(内景) "],
-      [".(外景) "],
-      [".(内外景) "],
-      ["INT. "],
-      ["EXT. "],
-      ["INT/EXT. "],
-      ["EST. "]
-    ];
+    [".(内景) "],
+    [".(外景) "],
+    [".(内外景) "],
+    ["INT. "],
+    ["EXT. "],
+    ["INT/EXT. "],
+    ["EST. "]
+  ];
   List<List<String>> autoCompleteScene = [];
   List<List<String>> autoCompleteLocation = [];
   List<List<String>> autoCompleteTime = [
@@ -227,7 +227,6 @@ class _EditorScreenState extends State<EditorScreen> {
     }
 
     // 重置 autoCompleteScene 为默认内容，然后添加重复场景号的场景头
-
 
     // 清除旧的内容，重新基于默认内容添加
     autoCompleteScene.clear();
@@ -415,7 +414,8 @@ class _EditorScreenState extends State<EditorScreen> {
     _startChars = parsed.startChars;
     _elements = parsed.elements;
 
-    addCompleteAfterParser(parsed.statis!, dupSceneHeadings: parsed.dupSceneHeadings);
+    addCompleteAfterParser(parsed.statis!,
+        dupSceneHeadings: parsed.dupSceneHeadings);
 
     if (callback != null) {
       callback();
@@ -1329,8 +1329,9 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   // 在当前光标位置插入括号, 如果选择_quillController.selection选择的长度大于零，在 quillController.selection.baseOffset 插入括号的前半部，再插入原来内容，再插入括号后半部，最后光标在括号内
-  void _insertBracketsAtCursor(String brackets) {
-    final backetsHalfLen = brackets.length % 2 == 0 ? brackets.length ~/ 2 : (brackets.length ~/ 2) + 1;
+  void _insertBracketsAtCursor(String brackets, {int offset = 1}) {
+    final backetsHalfLen =
+        offset > 0 ? (brackets.length ~/ 2) : brackets.length + offset;
     final index = _quillController.selection.baseOffset;
     final length = _quillController.selection.extentOffset -
         _quillController.selection.baseOffset;
@@ -1673,7 +1674,7 @@ Metadata: {
         return;
 
       case "重复场景号 #\${}#":
-        _insertBracketsAtCursor("#\${}#");
+        _insertBracketsAtCursor(" #\${}#", offset: -2);
         return;
 
       case "标注 [[]]":

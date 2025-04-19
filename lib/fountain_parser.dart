@@ -225,7 +225,7 @@ class FountainParser {
           ? locationText.substring(0, timeSplit.start).trim()
           : locationText.trim();
       final timePart = timeSplit != null
-          ? locationText.substring(timeSplit.end).trim().toLowerCase()
+          ? locationText.substring(timeSplit.end).trim().toUpperCase()
           : '';
 
       // // 分割多个地点名称并生成Location列表
