@@ -51,6 +51,7 @@ class FountainParser {
   bool parseing = false;
   bool cancel = false;
   ParserOutput? result;
+  int isEnglish = -1;
 
   List<CallbackParser> callbacks = [];
 
@@ -199,6 +200,16 @@ class FountainParser {
         allSceneNum.add(nb);
       }
 
+      if (isEnglish < 0) {
+        // 只处理一次，只看第一个场景头，是否为英文，就确定显示中文还是英文统计。
+        if (sceneHeading.trim().toLowerCase().startsWith('i') ||
+            sceneHeading.trim().toLowerCase().startsWith('e')) {
+          isEnglish = 1; //
+        } else {
+          isEnglish = 0;
+        }
+      }
+
       // 处理场景类型和内景/外景标记
       var locationText = sceneMatch.group(2) ?? '';
       var isInterior = sceneHeading.toLowerCase().contains('int');
@@ -239,22 +250,26 @@ class FountainParser {
 
       // 遍历names
       for (var name in names) {
-        var tp = timePart.isNotEmpty ? timePart : '不确定';
+        var tp = timePart.isNotEmpty
+            ? timePart
+            : isEnglish == 1
+                ? 'Unclear'
+                : '不确定';
         statis.addTimesScenes(tp, 1);
         statis.addLocationScenes(name, 1);
         statis.addLocationTimeScenes(name, tp, 1);
         if (isExterior && isInterior) {
           if (names.length > 1) {
-            statis.addIntextsScenes('不确定', 1);
+            statis.addIntextsScenes(isEnglish == 1 ? 'Unclear' : '不确定', 1);
           } else {
-            statis.addIntextsScenes('内外景', 1);
+            statis.addIntextsScenes(isEnglish == 1 ? 'INT/EXT' : '内外景', 1);
           }
         } else if (isExterior) {
-          statis.addIntextsScenes('外景', 1);
+          statis.addIntextsScenes(isEnglish == 1 ? 'EXT' : '外景', 1);
         } else if (isInterior) {
-          statis.addIntextsScenes('内景', 1);
+          statis.addIntextsScenes(isEnglish == 1 ? 'INT' : '内景', 1);
         } else {
-          statis.addIntextsScenes('不确定', 1);
+          statis.addIntextsScenes(isEnglish == 1 ? 'Unclear' : '不确定', 1);
         }
       }
     }

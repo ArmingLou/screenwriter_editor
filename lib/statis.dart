@@ -4,7 +4,7 @@ class Statis {
   final Map<String, int> times;
   final Map<String, int> intexts;
   final Map<String, Map<String, int>> locationsTime;
-
+  
   Statis({
     required this.characters,
     required this.locations,
