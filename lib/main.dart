@@ -276,8 +276,19 @@ class _EditorScreenState extends State<EditorScreen> {
       if (time == "不确定") {
         continue;
       }
-      final formattedTime = [" - ${time.toUpperCase()}"];
-      if (!autoCompleteTime.contains(formattedTime)) {
+      final formattedTimeStr = " - ${time.toUpperCase()}";
+      final formattedTime = [formattedTimeStr];
+
+      // 检查是否已存在相同的时间标记
+      bool exists = false;
+      for (var timeItem in autoCompleteTime) {
+        if (timeItem.isNotEmpty && timeItem[0] == formattedTimeStr) {
+          exists = true;
+          break;
+        }
+      }
+
+      if (!exists) {
         autoCompleteTime.add(formattedTime);
       }
     }
