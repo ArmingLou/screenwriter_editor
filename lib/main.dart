@@ -128,15 +128,16 @@ class _EditorScreenState extends State<EditorScreen> {
   double _dialCharsPerMinu = 171; //按每分钟多少个字预估, （只针对 对白）。
   bool fisrtScencStarted = false;
 
-  List<List<String>> autoCompleteScene = [
-    [".(内景) "],
-    [".(外景) "],
-    [".(内外景) "],
-    ["INT. "],
-    ["EXT. "],
-    ["INT/EXT. "],
-    ["EST. "]
-  ];
+  static final List<List<String>> defaultAutoCompleteScene = [
+      [".(内景) "],
+      [".(外景) "],
+      [".(内外景) "],
+      ["INT. "],
+      ["EXT. "],
+      ["INT/EXT. "],
+      ["EST. "]
+    ];
+  List<List<String>> autoCompleteScene = [];
   List<List<String>> autoCompleteLocation = [];
   List<List<String>> autoCompleteTime = [
     [" - 日"],
@@ -197,7 +198,7 @@ class _EditorScreenState extends State<EditorScreen> {
     "~",
   ];
 
-  void addCompleteAfterParser(Statis statis) {
+  void addCompleteAfterParser(Statis statis, {Set<String>? dupSceneHeadings}) {
     // 处理 autoCompleteLocation - 按首字拼音或首字母升序排序
     autoCompleteLocation.clear();
     final locationsList = statis.locations.keys.toList();
@@ -223,6 +224,20 @@ class _EditorScreenState extends State<EditorScreen> {
 
     for (var location in locationsList) {
       autoCompleteLocation.add([location]);
+    }
+
+    // 重置 autoCompleteScene 为默认内容，然后添加重复场景号的场景头
+
+
+    // 清除旧的内容，重新基于默认内容添加
+    autoCompleteScene.clear();
+    autoCompleteScene.addAll(defaultAutoCompleteScene);
+
+    // 如果有重复场景号的场景头，添加到 autoCompleteScene
+    if (dupSceneHeadings != null && dupSceneHeadings.isNotEmpty) {
+      for (var heading in dupSceneHeadings) {
+        autoCompleteScene.add([heading]);
+      }
     }
 
     // 处理 autoCompleteCharacter - 按字数降序排序
@@ -389,7 +404,7 @@ class _EditorScreenState extends State<EditorScreen> {
     _startChars = parsed.startChars;
     _elements = parsed.elements;
 
-    addCompleteAfterParser(parsed.statis!);
+    addCompleteAfterParser(parsed.statis!, dupSceneHeadings: parsed.dupSceneHeadings);
 
     if (callback != null) {
       callback();
@@ -723,6 +738,9 @@ class _EditorScreenState extends State<EditorScreen> {
       selection: const TextSelection.collapsed(offset: 0),
       onSelectionChanged: whenChangeSlect,
     );
+
+    // 初始化 autoCompleteScene
+    autoCompleteScene = List.from(defaultAutoCompleteScene);
 
     // 设置初始的只读状态，与工具栏状态一致
     // _quillController.readOnly = !_editable;

@@ -9,6 +9,7 @@ class ParserOutput {
   final bool fisrtScencStarted;
   final int startChars; //第一个场景之前的字数，作用是预估时间需要减去。包含注解的字数。
   final bool canceled;
+  final Set<String> dupSceneHeadings; // 包含 dupSceneNum 的场景头文本，去掉注释后的
   ParserOutput(
       this.elements,
       this.statis,
@@ -16,7 +17,8 @@ class ParserOutput {
       this.dialCharsPerMinu,
       this.fisrtScencStarted,
       this.startChars,
-      this.canceled);
+      this.canceled,
+      [this.dupSceneHeadings = const {}]);
 }
 
 class FountainElement {
@@ -155,13 +157,15 @@ class FountainParser {
     }
   }
 
-  _processScene(bool doStatis, String sceneHeading) {
+  // 返回值表示该场景头是否包含 dupSceneNum
+  bool _processScene(bool doStatis, String sceneHeading) {
+    bool containsDupSceneNum = false;
     if (doStatis) {
       final sceneMatch =
           FountainConstants.regex['scene_heading']!.firstMatch(sceneHeading);
 
       if (sceneMatch == null || sceneMatch.groupCount < 2) {
-        return;
+        return containsDupSceneNum;
       }
 
       // 处理场景号
@@ -183,13 +187,14 @@ class FountainParser {
               nb = dupSceneNum[nb2.trim()]!;
             } else {
               dupSceneNum[nb2.trim()] = nb;
+              containsDupSceneNum = true;
             }
           }
         }
       }
       if (allSceneNum.contains(nb)) {
         // 重复 场景号，免统计
-        return;
+        return containsDupSceneNum;
       } else {
         allSceneNum.add(nb);
       }
@@ -253,6 +258,7 @@ class FountainParser {
         }
       }
     }
+    return containsDupSceneNum;
   }
 
   ParserOutput parse(bool doStatis, String text) {
@@ -281,6 +287,9 @@ class FountainParser {
     allSceneNum.clear();
     dupSceneNum.clear();
 
+    // 用于收集包含 dupSceneNum 的场景头文本
+    final Set<String> dupSceneHeadings = {};
+
     for (var line in lines) {
       if (cancel) {
         result = ParserOutput([], null, 0, 0, false, 0, true);
@@ -290,6 +299,7 @@ class FountainParser {
       final trimmedLine = line.trim();
       final length = line.length;
       var statisDial = false; //是否需要统计对话字数，需要在减去评论字数之后
+      bool containsDupSceneNum = false;
 
       if (commentStarted < 0) {
         //注解最优先
@@ -358,7 +368,7 @@ class FountainParser {
             '',
             Range(offset, length),
           ));
-          _processScene(doStatis, line);
+          containsDupSceneNum = _processScene(doStatis, line);
           fisrtScencStarted = true;
         } else if (FountainConstants.regex['centered']!.hasMatch(line)) {
           elements.add(FountainElement(
@@ -488,6 +498,10 @@ class FountainParser {
       if (statisDial) {
         statis.addCharacterChars(preCharater, textAfterComent.trim().length);
       }
+      if (containsDupSceneNum) {
+        // 去掉注释后的场景头文本
+        dupSceneHeadings.add(textAfterComent.trim());
+      }
 
       if (!fisrtScencStarted) {
         startChars += length + 1; // 加上被split删去的换行符
@@ -526,7 +540,7 @@ class FountainParser {
     }
 
     result = ParserOutput(elements, statis, charsPerMinu, dialCharsPerMinu,
-        fisrtScencStarted, startChars, false);
+        fisrtScencStarted, startChars, false, dupSceneHeadings);
 
     callAllCallbacks(result!);
 
