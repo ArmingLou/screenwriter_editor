@@ -2329,7 +2329,8 @@ Metadata: {
           children: [
             Expanded(
               child: Shortcuts(
-                shortcuts: <ShortcutActivator, Intent>{
+                shortcuts: _editable ? <ShortcutActivator, Intent>{} : <ShortcutActivator, Intent>{
+                  // 只在只读模式下拦截键盘事件
                   // 拦截所有键盘事件
                   CharacterActivator(''):
                       const BlockKeyboardIntent(), // 拦截所有字符输入
