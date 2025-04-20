@@ -1,0 +1,385 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+
+/// 定义Socket客户端的状态
+enum SocketClientStatus {
+  disconnected,
+  connecting,
+  connected,
+  error,
+}
+
+/// 定义Socket客户端的事件类型
+enum SocketClientEventType {
+  connected,  // 连接成功
+  disconnected, // 断开连接
+  content,    // 接收到内容
+  error,      // 发生错误
+}
+
+/// Socket客户端事件数据结构
+class SocketClientEvent {
+  final SocketClientEventType type;
+  final String? content;
+  final String? errorMessage;
+
+  SocketClientEvent({
+    required this.type,
+    this.content,
+    this.errorMessage,
+  });
+}
+
+/// 远程服务器配置
+class RemoteServerConfig {
+  final String name;
+  final String host;
+  final int port;
+  final String? password;
+
+  RemoteServerConfig({
+    required this.name,
+    required this.host,
+    required this.port,
+    this.password,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'host': host,
+      'port': port,
+      'password': password,
+    };
+  }
+
+  factory RemoteServerConfig.fromJson(Map<String, dynamic> json) {
+    return RemoteServerConfig(
+      name: json['name'] as String,
+      host: json['host'] as String,
+      port: json['port'] as int,
+      password: json['password'] as String?,
+    );
+  }
+}
+
+/// Socket客户端类
+class SocketClient {
+  // 单例模式
+  static final SocketClient _instance = SocketClient._internal();
+  factory SocketClient() => _instance;
+  SocketClient._internal();
+
+  // WebSocket连接
+  WebSocketChannel? _channel;
+
+  // 状态
+  ValueNotifier<SocketClientStatus> status =
+      ValueNotifier<SocketClientStatus>(SocketClientStatus.disconnected);
+
+  // 错误信息
+  String? errorMessage;
+
+  // 当前连接的服务器配置
+  RemoteServerConfig? currentServer;
+
+  // 事件流控制器
+  final StreamController<SocketClientEvent> _eventController =
+      StreamController<SocketClientEvent>.broadcast();
+
+  // 事件流
+  Stream<SocketClientEvent> get events => _eventController.stream;
+
+  // 保存的服务器配置列表
+  List<RemoteServerConfig> _savedServers = [];
+
+  /// 加载保存的服务器配置
+  Future<List<RemoteServerConfig>> loadSavedServers() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final serversJson = prefs.getStringList('socket_client_servers') ?? [];
+
+      _savedServers = serversJson
+          .map((json) => RemoteServerConfig.fromJson(jsonDecode(json)))
+          .toList();
+
+      return _savedServers;
+    } catch (e) {
+      debugPrint('Error loading saved servers: $e');
+      return [];
+    }
+  }
+
+  /// 保存服务器配置
+  Future<bool> saveServerConfig(RemoteServerConfig config) async {
+    try {
+      // 加载现有配置
+      await loadSavedServers();
+
+      // 检查是否已存在相同配置
+      final existingIndex = _savedServers.indexWhere(
+        (server) => server.host == config.host && server.port == config.port,
+      );
+
+      if (existingIndex >= 0) {
+        // 更新现有配置
+        _savedServers[existingIndex] = config;
+      } else {
+        // 添加新配置
+        _savedServers.add(config);
+      }
+
+      // 保存到SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final serversJson = _savedServers
+          .map((server) => jsonEncode(server.toJson()))
+          .toList();
+
+      await prefs.setStringList('socket_client_servers', serversJson);
+      return true;
+    } catch (e) {
+      debugPrint('Error saving server config: $e');
+      return false;
+    }
+  }
+
+  /// 删除服务器配置
+  Future<bool> deleteServerConfig(RemoteServerConfig config) async {
+    try {
+      // 加载现有配置
+      await loadSavedServers();
+
+      // 移除匹配的配置
+      _savedServers.removeWhere(
+        (server) => server.host == config.host && server.port == config.port,
+      );
+
+      // 保存到SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final serversJson = _savedServers
+          .map((server) => jsonEncode(server.toJson()))
+          .toList();
+
+      await prefs.setStringList('socket_client_servers', serversJson);
+      return true;
+    } catch (e) {
+      debugPrint('Error deleting server config: $e');
+      return false;
+    }
+  }
+
+  /// 连接到远程服务器
+  /// 返回一个Future，表示连接是否已启动（不一定表示连接成功）
+  Future<bool> connect(RemoteServerConfig server) async {
+    if (status.value == SocketClientStatus.connected) {
+      await disconnect();
+    }
+
+    // 立即更新状态为连接中，这样UI可以立即响应
+    status.value = SocketClientStatus.connecting;
+    errorMessage = null;
+    currentServer = server;
+
+    // 使用计算隔离执行连接操作，避免阻塞UI线程
+    return compute<Map<String, dynamic>, bool>(_connectInIsolate, {
+      'host': server.host,
+      'port': server.port,
+      'password': server.password,
+    }).then((success) {
+      return success;
+    }).catchError((e) {
+      errorMessage = e.toString();
+      status.value = SocketClientStatus.error;
+      _eventController.add(SocketClientEvent(
+        type: SocketClientEventType.error,
+        errorMessage: e.toString(),
+      ));
+      return false;
+    });
+  }
+
+  /// 在隔离中执行连接操作
+  static Future<bool> _connectInIsolate(Map<String, dynamic> params) async {
+    try {
+      final host = params['host'] as String;
+      final port = params['port'] as int;
+      // password在主线程中使用，这里只检查连接性
+
+      // 构建WebSocket URL
+      final wsUrl = 'ws://$host:$port';
+
+      // 尝试连接，但不实际建立连接，只是检查是否可达
+      // 实际连接将在主线程中创建
+      final uri = Uri.parse(wsUrl);
+      final socket = await Socket.connect(uri.host, uri.port, timeout: const Duration(seconds: 5));
+      await socket.close();
+
+      return true;
+    } catch (e) {
+      return Future.error(e);
+    }
+  }
+
+  /// 完成连接过程（在主线程中调用）
+  Future<bool> completeConnection() async {
+    if (status.value != SocketClientStatus.connecting || currentServer == null) {
+      return false;
+    }
+
+    try {
+      final server = currentServer!;
+      final wsUrl = 'ws://${server.host}:${server.port}';
+
+      // 创建WebSocket连接
+      _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
+
+      // 监听消息
+      _channel!.stream.listen(
+        (dynamic message) {
+          _handleMessage(message);
+        },
+        onDone: () {
+          _handleDisconnect();
+        },
+        onError: (error) {
+          _handleError(error.toString());
+        },
+      );
+
+      // 如果有密码，发送认证请求
+      if (server.password != null && server.password!.isNotEmpty) {
+        _sendAuthRequest(server.password!);
+      }
+
+      status.value = SocketClientStatus.connected;
+      _eventController.add(SocketClientEvent(
+        type: SocketClientEventType.connected,
+      ));
+
+      return true;
+    } catch (e) {
+      errorMessage = e.toString();
+      status.value = SocketClientStatus.error;
+      _eventController.add(SocketClientEvent(
+        type: SocketClientEventType.error,
+        errorMessage: e.toString(),
+      ));
+      return false;
+    }
+  }
+
+  /// 断开连接
+  Future<void> disconnect() async {
+    if (_channel != null) {
+      await _channel!.sink.close();
+      _channel = null;
+    }
+
+    status.value = SocketClientStatus.disconnected;
+    currentServer = null;
+
+    _eventController.add(SocketClientEvent(
+      type: SocketClientEventType.disconnected,
+    ));
+  }
+
+  /// 发送认证请求
+  void _sendAuthRequest(String password) {
+    if (_channel == null || status.value != SocketClientStatus.connected) {
+      return;
+    }
+
+    final authRequest = jsonEncode({
+      'type': 'auth',
+      'password': password,
+    });
+
+    _channel!.sink.add(authRequest);
+  }
+
+  /// 发送获取内容请求
+  void fetchContent() {
+    if (_channel == null || status.value != SocketClientStatus.connected) {
+      return;
+    }
+
+    final fetchRequest = jsonEncode({
+      'type': 'fetch',
+    });
+
+    _channel!.sink.add(fetchRequest);
+  }
+
+  /// 发送推送内容请求
+  void pushContent(String content) {
+    if (_channel == null || status.value != SocketClientStatus.connected) {
+      return;
+    }
+
+    final pushRequest = jsonEncode({
+      'type': 'push',
+      'content': content,
+    });
+
+    _channel!.sink.add(pushRequest);
+  }
+
+  /// 处理接收到的消息
+  void _handleMessage(dynamic message) {
+    if (message is String) {
+      try {
+        final Map<String, dynamic> data = jsonDecode(message);
+        final String type = data['type'];
+
+        if (type == 'auth_response') {
+          final bool success = data['success'] ?? false;
+          if (!success) {
+            _handleError('认证失败: ${data['message']}');
+          }
+        } else if (type == 'content') {
+          final String content = data['content'] ?? '';
+          _eventController.add(SocketClientEvent(
+            type: SocketClientEventType.content,
+            content: content,
+          ));
+        } else if (type == 'error') {
+          _handleError(data['message'] ?? '未知错误');
+        }
+      } catch (e) {
+        debugPrint('Error parsing message: $e');
+      }
+    }
+  }
+
+  /// 处理断开连接
+  void _handleDisconnect() {
+    _channel = null;
+    status.value = SocketClientStatus.disconnected;
+    currentServer = null;
+
+    _eventController.add(SocketClientEvent(
+      type: SocketClientEventType.disconnected,
+    ));
+  }
+
+  /// 处理错误
+  void _handleError(String error) {
+    errorMessage = error;
+    status.value = SocketClientStatus.error;
+
+    _eventController.add(SocketClientEvent(
+      type: SocketClientEventType.error,
+      errorMessage: error,
+    ));
+  }
+
+  /// 释放资源
+  void dispose() {
+    disconnect();
+    _eventController.close();
+  }
+}

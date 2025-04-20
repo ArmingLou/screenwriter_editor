@@ -12,6 +12,8 @@ import 'package:flutter_quill/flutter_quill.dart';
 import 'package:path/path.dart' as path;
 import 'package:screenwriter_editor/socket_service.dart';
 import 'package:screenwriter_editor/socket_settings_page.dart';
+import 'package:screenwriter_editor/socket_client.dart';
+import 'package:screenwriter_editor/socket_client_page.dart';
 import 'package:screenwriter_editor/statis.dart';
 import 'package:screenwriter_editor/stats_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -688,39 +690,19 @@ class _EditorScreenState extends State<EditorScreen> {
         case SocketEventType.push:
           // 将客户端发送的内容替换到编辑器
           if (event.content != null && event.content!.isNotEmpty) {
-            // var needPopEditbar = false;
-            if (!_editable) {
-              _editable = true; // 强制切换到编辑模式
-              // needPopEditbar = true;
-            }
-
-            _quillController.replaceText(
-                0,
-                _quillController.document.length - 1,
-                event.content!,
-                const TextSelection.collapsed(offset: 0));
-
-            int total = _quillController.document.length - 1;
-            if (total < 0) total = 0;
-            _charsLenNotifier.value = [
-              _quillController.selection.baseOffset,
-              total
-            ];
-            _showInfo('已从远程客户端接收并更新内容');
-
-            // 触发格式更新
-            Future.delayed(const Duration(milliseconds: 2), () {
-              setState(() {});
-              formatFullText(); // 全文格式
-            });
-
-            // if (needPopEditbar) {
-            //   Future.delayed(const Duration(milliseconds: 5), () {
-            //     setState(() {});
-            //   });
-            // }
+            _replaceTextFromRemote(event.content!);
           }
           break;
+      }
+    });
+
+    // 监听Socket客户端事件
+    SocketClient().events.listen((event) {
+      if (event.type == SocketClientEventType.content) {
+        if (event.content != null) {
+          // 收到远程内容，替换到当前编辑器
+          _replaceTextFromRemote(event.content!);
+        }
       }
     });
 
@@ -738,6 +720,59 @@ class _EditorScreenState extends State<EditorScreen> {
         _showSuccess('远程同步服务已自动启动，端口: $port$securityStatus');
       }
     }
+  }
+
+  // 显示Socket客户端操作菜单
+  void _showSocketClientMenu(BuildContext context) {
+    final socketClient = SocketClient();
+    final server = socketClient.currentServer;
+
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text('已连接到 ${server?.name ?? "未知服务器"}'),
+              subtitle: Text('${server?.host}:${server?.port}'),
+              leading: const Icon(Icons.computer, color: Colors.green),
+            ),
+            const Divider(),
+            ListTile(
+              title: const Text('断开连接'),
+              leading: const Icon(Icons.link_off),
+              onTap: () {
+                socketClient.disconnect();
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              title: const Text('推送内容'),
+              subtitle: const Text('将当前编辑器内容推送到远程服务器'),
+              leading: const Icon(Icons.upload),
+              onTap: () {
+                final content = _docText();
+                socketClient.pushContent(content);
+                Navigator.pop(context);
+                _showInfo('内容已推送到远程服务器');
+              },
+            ),
+            ListTile(
+              title: const Text('拉取内容'),
+              subtitle: const Text('从远程服务器获取内容并替换当前编辑器'),
+              leading: const Icon(Icons.download),
+              onTap: () {
+                socketClient.fetchContent();
+                Navigator.pop(context);
+                _showInfo('正在从远程服务器获取内容...');
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -1189,6 +1224,28 @@ class _EditorScreenState extends State<EditorScreen> {
         duration: Duration(milliseconds: milliseconds),
       ),
     );
+  }
+
+  // 从文本内容打开新文档
+  void _replaceTextFromRemote(String content) {
+    if (!_editable) {
+      _editable = true; // 强制切换到编辑模式
+      // needPopEditbar = true;
+    }
+
+    _quillController.replaceText(0, _quillController.document.length - 1,
+        content, const TextSelection.collapsed(offset: 0));
+
+    int total = _quillController.document.length - 1;
+    if (total < 0) total = 0;
+    _charsLenNotifier.value = [_quillController.selection.baseOffset, total];
+    _showInfo('已从远程 接收并更新内容');
+
+    // 触发格式更新
+    Future.delayed(const Duration(milliseconds: 2), () {
+      setState(() {});
+      formatFullText(); // 全文格式
+    });
   }
 
   List<Attribute<dynamic>?>? _getStyleForElement(FountainElement element) {
@@ -1724,7 +1781,6 @@ Metadata: {
   Widget _buildToolbar() {
     // 定义图标大小和按钮大小，使其更紧凑
     const double iconSize = 18.0; // 进一步缩小图标大小
-    const double buttonWidth = 30.0; // 进一步缩小按钮宽度
     const VisualDensity visualDensity =
         VisualDensity(horizontal: -1.0, vertical: -4.0); // 最小化按钮内边距
 
@@ -2197,7 +2253,6 @@ Metadata: {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  // 远程同步按钮
                   ValueListenableBuilder<SocketServiceStatus>(
                     valueListenable: _socketService.status,
                     builder: (context, status, _) {
@@ -2207,12 +2262,12 @@ Metadata: {
                         child: InkWell(
                           customBorder: const CircleBorder(),
                           child: SizedBox(
-                            width: 40,
+                            width: 24,
                             height: 24,
                             child: Icon(
-                              isRunning ? Icons.link : Icons.link_off,
+                              isRunning ? Icons.cloud_circle: Icons.cloud_off,
                               color: isRunning ? Colors.green : null,
-                              size: 18,
+                              size: 16,
                             ),
                           ),
                           // tooltip: isRunning ? '远程同步服务已启动' : '远程同步设置',
@@ -2227,6 +2282,44 @@ Metadata: {
                           },
                           // padding: EdgeInsets.zero,
                           // constraints: BoxConstraints(),
+                        ),
+                      );
+                    },
+                  ),
+                  // 远程同步客户端按钮
+                  ValueListenableBuilder<SocketClientStatus>(
+                    valueListenable: SocketClient().status,
+                    builder: (context, status, _) {
+                      final isConnected =
+                          status == SocketClientStatus.connected;
+                      return Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          child: SizedBox(
+                            width: 30,
+                            height: 24,
+                            child: Icon(
+                              isConnected ? Icons.file_download_sharp : Icons.file_download_off_sharp,
+                              color: isConnected ? Colors.green : Colors.black,
+                              size: 18,
+                            ),
+                          ),
+                          onTap: () {
+                            if (isConnected) {
+                              // 已连接，显示操作菜单
+                              _showSocketClientMenu(context);
+                            } else {
+                              // 未连接，打开连接页面
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const SocketClientPage(),
+                                ),
+                              );
+                            }
+                          },
                         ),
                       );
                     },
