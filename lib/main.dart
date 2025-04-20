@@ -465,6 +465,10 @@ class _EditorScreenState extends State<EditorScreen> {
     final tot = _elements.length;
     RTF:
     for (var i = 0; i < tot; i++) {
+      if (i >= _elements.length) {
+        // 预防异步后 _elements 改变了，比如没刷新完全文，就修改了内容并
+        break;
+      }
       final element = _elements[i];
       final styles = _getStyleForElement(element);
       if (styles != null) {
@@ -685,7 +689,7 @@ class _EditorScreenState extends State<EditorScreen> {
       //   curve: Curves.easeInOut,
       // );
       _scrollController.jumpTo(scrollPosition);
-      
+
       // 滚动监听回调，又会触发 更新 状态栏 进度条
 
       // 更新字数统计
@@ -2386,8 +2390,8 @@ Metadata: {
                       }
                     },
                     child: QuillEditor(
-                      focusNode:_focusNode,
-                          // FocusNode(skipTraversal: !_editable), // 在只读模式下跳过焦点遍历
+                      focusNode: _focusNode,
+                      // FocusNode(skipTraversal: !_editable), // 在只读模式下跳过焦点遍历
                       scrollController: _scrollController,
                       controller: _quillController,
                       config: QuillEditorConfig(
