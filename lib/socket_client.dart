@@ -19,6 +19,7 @@ enum SocketClientEventType {
   disconnected, // 断开连接
   content,    // 接收到内容
   error,      // 发生错误
+  auth,       // 认证相关
 }
 
 /// Socket客户端事件数据结构
@@ -250,12 +251,20 @@ class SocketClient {
         },
       );
 
-      // 如果有密码，发送认证请求
+      // 先更新状态为已连接，这样认证请求才能发送
+      status.value = SocketClientStatus.connected;
+
+      // 等待一下，确保连接已经完全建立
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // 如果有密码，发送密码；如果没有，发送空密码
       if (server.password != null && server.password!.isNotEmpty) {
         _sendAuthRequest(server.password!);
+      } else {
+        _sendAuthRequest('');
       }
 
-      status.value = SocketClientStatus.connected;
+      // 发送连接成功事件
       _eventController.add(SocketClientEvent(
         type: SocketClientEventType.connected,
       ));
@@ -289,7 +298,15 @@ class SocketClient {
 
   /// 发送认证请求
   void _sendAuthRequest(String password) {
-    if (_channel == null || status.value != SocketClientStatus.connected) {
+    debugPrint('准备发送认证请求: 密码="$password", 密码长度=${password.length}');
+
+    if (_channel == null) {
+      debugPrint('无法发送认证请求: WebSocket通道为空');
+      return;
+    }
+
+    if (status.value != SocketClientStatus.connected) {
+      debugPrint('无法发送认证请求: 当前状态不是已连接 (${status.value})');
       return;
     }
 
@@ -298,7 +315,9 @@ class SocketClient {
       'password': password,
     });
 
+    debugPrint('发送认证请求: $authRequest');
     _channel!.sink.add(authRequest);
+    debugPrint('认证请求已发送');
   }
 
   /// 发送获取内容请求
@@ -336,9 +355,21 @@ class SocketClient {
         final String type = data['type'];
 
         if (type == 'auth_response') {
+          debugPrint('收到认证响应: $data');
           final bool success = data['success'] ?? false;
-          if (!success) {
-            _handleError('认证失败: ${data['message']}');
+          if (success) {
+            debugPrint('认证成功');
+            _eventController.add(SocketClientEvent(
+              type: SocketClientEventType.auth,
+              content: 'success',
+            ));
+          } else {
+            final message = data['message'] ?? '未知原因';
+            debugPrint('认证失败: $message');
+            _handleError('认证失败: $message');
+            // 认证失败时主动断开连接
+            debugPrint('认证失败，主动断开连接');
+            disconnect();
           }
         } else if (type == 'content') {
           final String content = data['content'] ?? '';
