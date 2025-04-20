@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_quill/quill_delta.dart';
 import 'package:path_provider/path_provider.dart';
@@ -22,6 +23,23 @@ import 'package:intl/intl.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:toastification/toastification.dart';
+
+// 自定义 Intent 类，用于拦截键盘事件
+class BlockKeyboardIntent extends Intent {
+  const BlockKeyboardIntent();
+}
+
+// 自定义 Action 类，用于处理拦截的键盘事件
+class BlockKeyboardAction extends Action<BlockKeyboardIntent> {
+  BlockKeyboardAction(this.onInvoke);
+
+  final Function() onInvoke;
+
+  @override
+  Object? invoke(BlockKeyboardIntent intent) {
+    return onInvoke();
+  }
+}
 
 void main() {
   runApp(const ScreenwriterEditorApp());
@@ -74,7 +92,8 @@ class _EditorScreenState extends State<EditorScreen> {
   final TextEditingController _titleEditingController = TextEditingController();
   final ScrollController _titleScrollController = ScrollController();
   late final QuillController _quillController;
-  final FocusNode _focusNode = FocusNode();
+  final FocusNode _focusNode = FocusNode(skipTraversal: true);
+  late final FocusNode _editorFocusNode;
   final ScrollController _scrollController = ScrollController();
   // TextSelection? _lastSelection;
   // String _currentFilePath = '';
@@ -634,13 +653,56 @@ class _EditorScreenState extends State<EditorScreen> {
       selectionTar = _quillController.document.length - 1;
     }
 
-    _quillController.updateSelection(
-      TextSelection(baseOffset: selectionTar, extentOffset: selectionTar),
-      ChangeSource.local,
-    );
+    // 在只读模式下，需要特殊处理
+    if (!_editable) {
+      // // 在只读模式下，我们使用直接控制 ScrollController 的方式来滚动
+      // // 首先，我们需要计算滚动位置
+
+      // // 获取文本内容
+      // final text = _quillController.document.toPlainText();
+
+      // // 计算目标位置之前的换行符数量
+      // int newlineCount = 0;
+      // for (int i = 0; i < selectionTar && i < text.length; i++) {
+      //   if (text[i] == '\n') {
+      //     newlineCount++;
+      //   }
+      // }
+
+      // // 估算每行的高度（像素）
+      // const double lineHeight = 20.0; // 根据您的字体大小调整
+
+      // 计算大致的滚动位置
+      // double scrollPosition = newlineCount * lineHeight;
+      // 计算大致的滚动位置
+      double scrollPosition =
+          _scrollController.position.maxScrollExtent * progress;
+
+      // 使用 ScrollController 滚动到该位置
+      // _scrollController.animateTo(
+      //   scrollPosition,
+      //   duration: Duration(milliseconds: 300),
+      //   curve: Curves.easeInOut,
+      // );
+      _scrollController.jumpTo(scrollPosition);
+      
+      // 滚动监听回调，又会触发 更新 状态栏 进度条
+
+      // 更新字数统计
+      // _charsLenNotifier.value = [selectionTar, total];
+    } else {
+      // 在编辑模式下，正常更新选区
+      _quillController.updateSelection(
+        TextSelection(baseOffset: selectionTar, extentOffset: selectionTar),
+        ChangeSource.local,
+      );
+      // 光标更新位置， 会自动滚动显示，又会触发回调 whenChangeSlect 。回调再触发更新进度条显示。
+    }
   }
 
   void _onTapDownSlider(PointerDownEvent event) async {
+    // 切换到编辑模式，可以选择性地请求焦点
+    _focusNode.requestFocus();
     _onTapSlider(event);
   }
 
@@ -778,6 +840,8 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   void initState() {
     super.initState();
+    _editorFocusNode = FocusNode();
+
     final document = Document();
     _quillController = QuillController(
       document: document,
@@ -790,6 +854,9 @@ class _EditorScreenState extends State<EditorScreen> {
 
     // 设置初始的只读状态，与工具栏状态一致
     // _quillController.readOnly = !_editable;
+
+    // 添加滚动监听器，在只读模式下更新进度条
+    _scrollController.addListener(_updateProgressOnScroll);
 
     _setupFormatListener();
     _initSocketService();
@@ -825,12 +892,54 @@ class _EditorScreenState extends State<EditorScreen> {
     });
   }
 
+  // 在滚动时更新进度条
+  void _updateProgressOnScroll() {
+    // 获取文本内容
+    // final text = _quillController.document.toPlainText();
+    final total = _quillController.document.length - 1;
+    if (total <= 0) return;
+
+    // 获取当前滚动位置
+    final scrollPosition = _scrollController.position.pixels;
+    final maxScrollExtent = _scrollController.position.maxScrollExtent;
+
+    // 计算大致的字符位置
+    int estimatedPosition =
+        (total * (scrollPosition / maxScrollExtent)).toInt();
+    if (estimatedPosition < 0) estimatedPosition = 0;
+    if (estimatedPosition > total) estimatedPosition = total;
+
+    // if (_editable) {
+    //   // 在编辑模式下，更新光标位置
+    //   // 使用延迟执行，避免与滚动冲突
+    //   Future.microtask(() {
+    //     // 仅当用户没有选中文本时才更新光标位置
+    //     if (_quillController.selection.baseOffset == _quillController.selection.extentOffset) {
+    //       _quillController.updateSelection(
+    //         TextSelection.collapsed(offset: estimatedPosition),
+    //         ChangeSource.local,
+    //       );
+    //     }
+    //   });
+    // } else {
+
+    // }
+
+    // 无论编辑模式还是只读模式，都更新进度条
+    _charsLenNotifier.value = [estimatedPosition, total];
+  }
+
   @override
   void dispose() {
+    // 移除滚动监听器
+    _scrollController.removeListener(_updateProgressOnScroll);
+
     _editIconBlinkTimer?.cancel();
     _socketEventSubscription?.cancel();
     _socketService.dispose();
     _quillController.dispose();
+    _editorFocusNode.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -2201,15 +2310,96 @@ Metadata: {
         child: Column(
           children: [
             Expanded(
-              child: QuillEditor(
-                focusNode: _focusNode,
-                scrollController: _scrollController,
-                controller: _quillController,
-                config: QuillEditorConfig(
-                  scrollable: true,
-                  autoFocus: false,
-                  expands: true,
-                  padding: const EdgeInsets.all(8),
+              child: Shortcuts(
+                shortcuts: <ShortcutActivator, Intent>{
+                  // 拦截所有键盘事件
+                  CharacterActivator(''):
+                      const BlockKeyboardIntent(), // 拦截所有字符输入
+                  // 添加常用的特殊键
+                  SingleActivator(LogicalKeyboardKey.enter):
+                      const BlockKeyboardIntent(),
+                  SingleActivator(LogicalKeyboardKey.backspace):
+                      const BlockKeyboardIntent(),
+                  SingleActivator(LogicalKeyboardKey.delete):
+                      const BlockKeyboardIntent(),
+                  SingleActivator(LogicalKeyboardKey.tab):
+                      const BlockKeyboardIntent(),
+                  SingleActivator(LogicalKeyboardKey.space):
+                      const BlockKeyboardIntent(),
+                  // 拦截常用的组合键
+                  SingleActivator(LogicalKeyboardKey.keyV, control: true):
+                      const BlockKeyboardIntent(), // Ctrl+V
+                  SingleActivator(LogicalKeyboardKey.keyV, meta: true):
+                      const BlockKeyboardIntent(), // Cmd+V
+                  SingleActivator(LogicalKeyboardKey.keyX, control: true):
+                      const BlockKeyboardIntent(), // Ctrl+X
+                  SingleActivator(LogicalKeyboardKey.keyX, meta: true):
+                      const BlockKeyboardIntent(), // Cmd+X
+                  SingleActivator(LogicalKeyboardKey.keyC, control: true):
+                      const BlockKeyboardIntent(), // Ctrl+C
+                  SingleActivator(LogicalKeyboardKey.keyC, meta: true):
+                      const BlockKeyboardIntent(), // Cmd+C
+                  SingleActivator(LogicalKeyboardKey.keyA, control: true):
+                      const BlockKeyboardIntent(), // Ctrl+A
+                  SingleActivator(LogicalKeyboardKey.keyA, meta: true):
+                      const BlockKeyboardIntent(), // Cmd+A
+                  SingleActivator(LogicalKeyboardKey.keyZ, control: true):
+                      const BlockKeyboardIntent(), // Ctrl+Z
+                  SingleActivator(LogicalKeyboardKey.keyZ, meta: true):
+                      const BlockKeyboardIntent(), // Cmd+Z
+                  SingleActivator(LogicalKeyboardKey.keyY, control: true):
+                      const BlockKeyboardIntent(), // Ctrl+Y
+                  SingleActivator(LogicalKeyboardKey.keyY, meta: true):
+                      const BlockKeyboardIntent(), // Cmd+Y
+                },
+                child: Actions(
+                  actions: <Type, Action<Intent>>{
+                    BlockKeyboardIntent: BlockKeyboardAction(() {
+                      // 只在只读模式下拦截键盘事件
+                      if (!_editable) {
+                        // 处理只读模式下的计数逻辑
+                        int currentTime = DateTime.now().millisecondsSinceEpoch;
+                        if (currentTime - _lastReadOnlyInputTime > 3000) {
+                          _readOnlyInputCount = 1;
+                        } else {
+                          _readOnlyInputCount++;
+                        }
+                        _lastReadOnlyInputTime = currentTime;
+
+                        if (_readOnlyInputCount >= 3) {
+                          _readOnlyInputCount = 0;
+                          _startEditIconBlinking();
+                        }
+                        return null; // 拦截事件
+                      }
+                      return null; // 在编辑模式下不拦截，允许事件传递
+                    }),
+                  },
+                  child: Focus(
+                    focusNode: _editorFocusNode,
+                    canRequestFocus: true,
+                    descendantsAreFocusable: _editable, // 在只读模式下禁止子组件获取焦点
+                    onFocusChange: (hasFocus) {
+                      // 当焦点变化时，我们可以在这里添加额外的逻辑
+                      if (hasFocus && !_editable) {
+                        // 如果在只读模式下获得焦点，可以添加额外的处理
+                      }
+                    },
+                    child: QuillEditor(
+                      focusNode:_focusNode,
+                          // FocusNode(skipTraversal: !_editable), // 在只读模式下跳过焦点遍历
+                      scrollController: _scrollController,
+                      controller: _quillController,
+                      config: QuillEditorConfig(
+                        // enableInteractiveSelection: _editable,
+                        // enableSelectionToolbar: _editable,
+                        scrollable: true,
+                        autoFocus: false,
+                        expands: true,
+                        padding: const EdgeInsets.all(8),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -2265,7 +2455,7 @@ Metadata: {
                             width: 24,
                             height: 24,
                             child: Icon(
-                              isRunning ? Icons.cloud_circle: Icons.cloud_off,
+                              isRunning ? Icons.cloud_circle : Icons.cloud_off,
                               color: isRunning ? Colors.green : null,
                               size: 16,
                             ),
@@ -2300,7 +2490,9 @@ Metadata: {
                             width: 30,
                             height: 24,
                             child: Icon(
-                              isConnected ? Icons.file_download_sharp : Icons.file_download_off_sharp,
+                              isConnected
+                                  ? Icons.file_download_sharp
+                                  : Icons.file_download_off_sharp,
                               color: isConnected ? Colors.green : Colors.black,
                               size: 18,
                             ),
@@ -2347,10 +2539,30 @@ Metadata: {
                         setState(() {
                           _editable = !_editable;
                           if (!_editable) {
+                            // 切换到只读模式
                             _historyRollback = false;
                             _editIconColor = Colors.black; // 重置图标颜色
                             _editIconBlinkTimer?.cancel(); // 取消正在进行的闪烁
                             _editIconBlinkTimer = null;
+
+                            // 关键：在切换到只读模式时，让编辑器失去焦点
+                            // FocusScope.of(context).unfocus();
+                            _focusNode.unfocus();
+
+                            // 创建一个新的 FocusNode 来替换 QuillEditor 的 focusNode
+                            // 这样可以确保编辑器不会继续接收键盘事件
+                            Future.microtask(() {
+                              setState(() {
+                                // 这里不需要做任何事情，只是触发重建
+                              });
+                            });
+
+                            // 可选：如果上面的方法仍然不能解决问题，可以尝试下面的方法
+                            // 创建一个新的 FocusScopeNode，并将其设置为当前的 FocusScope
+                            // FocusScope.of(context).setFirstFocus(FocusScopeNode());
+                          } else {
+                            // 切换到编辑模式，可以选择性地请求焦点
+                            // _focusNode.requestFocus();
                           }
                           // 更新编辑器的只读状态
                           // _quillController.readOnly = !_editable;
