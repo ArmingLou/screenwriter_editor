@@ -358,6 +358,10 @@ class _EditorScreenState extends State<EditorScreen> {
     final tot = _elements.length;
     RT:
     for (var i = 0; i < tot; i++) {
+      if (i >= _elements.length) {
+        // 预防异步后 _elements 改变了，比如没刷新完全文，就修改了内容并
+        break;
+      }
       final element = _elements[i];
 
       if (element.range.start + element.range.length < minOffset) {
@@ -380,6 +384,11 @@ class _EditorScreenState extends State<EditorScreen> {
             }
             await formatText(
                 element.range.start, element.range.length, style, false);
+
+            if (i >= _elements.length) {
+              // 预防异步后 _elements 改变了，比如没刷新完全文，就修改了内容并
+              break RT;
+            }
             _elements[i].formated = true;
             //await 延迟
             await Future.delayed(const Duration(milliseconds: 2));
@@ -480,6 +489,11 @@ class _EditorScreenState extends State<EditorScreen> {
             }
             await formatText(
                 element.range.start, element.range.length, style, false);
+
+            if (i >= _elements.length) {
+              // 预防异步后 _elements 改变了，比如没刷新完全文，就修改了内容并
+              break RTF;
+            }
             _elements[i].formated = true;
             // count++;
             // if (count >= 100) {
