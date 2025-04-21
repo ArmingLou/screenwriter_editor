@@ -662,21 +662,36 @@ class _EditorScreenState extends State<EditorScreen> {
   // TODO Arming (2025-04-21) : 已知问题，quillEditor 内部实现，可能会将多次连续输入操作的undo按一定策略动态合并成一个，导致不是每次键盘就产生一个undo，可能是多次输入，逐渐合并成一次undo。
   // 在某些场景下，为避免 undo 的智能合并，强制新undo的实现。借助 clear历史历表的方式。等待下次 _quillController.document.changes 回调后，再加回去。
   // 调用之后的新操作，保证会产生新的独立undo。但再后面的操作会继续智能合并，只保证新拆分一次。
-  // 请预期后面马上会有编辑操作，才调用，否则 undo ui 会判断为没有回滚操作，显示不可点击。 或者在进入只读模式后，显示不可点也没问题。
+  // // 请预期后面马上会有编辑操作，才调用，否则 undo ui 会判断为没有回滚操作，显示不可点击。 或者在进入只读模式后，显示不可点也没问题。
   void splitNewUndo() {
     _splitOldUndo.clear();
     _splitOldUndo.addAll(_quillController.document.history.stack.undo);
     _quillController.document.history.stack.undo.clear();
     // 等待下次 _quillController.document.changes 回调后，再加回去。
   }
+
   // 撤回，比如退出 只读模式时。。或者实施拆分，当下次 编辑记录 产生时。
   void revertOrDoSplitNewUndo() {
     if (_splitOldUndo.isNotEmpty) {
-        _splitOldUndo.addAll(_quillController.document.history.stack.undo);
-        _quillController.document.history.stack.undo.clear();
-        _quillController.document.history.stack.undo.addAll(_splitOldUndo);
-        _splitOldUndo.clear();
-      }
+      _splitOldUndo.addAll(_quillController.document.history.stack.undo);
+      _quillController.document.history.stack.undo.clear();
+      _quillController.document.history.stack.undo.addAll(_splitOldUndo);
+      _splitOldUndo.clear();
+    }
+  }
+
+  bool _hasUndo() {
+    return _quillController.document.hasUndo || _splitOldUndo.isNotEmpty;
+  }
+
+  void _undo() {
+    if (_quillController.document.hasUndo) {
+      _quillController.undo();
+    } else if (_splitOldUndo.isNotEmpty) {
+      _quillController.document.history.stack.undo.addAll(_splitOldUndo);
+      _splitOldUndo.clear();
+      _quillController.undo();
+    }
   }
 
   void _onTapSlider(PointerEvent event) async {
@@ -2100,8 +2115,8 @@ Metadata: {
                         disabledColor: disbaleColor,
                         icon: Icon(Icons.undo, size: iconSize),
                         tooltip: '撤销',
-                        onPressed: _quillController.document.hasUndo
-                            ? _quillController.undo
+                        onPressed: _hasUndo()
+                            ? _undo
                             : null,
                         visualDensity: visualDensity,
                       ),
@@ -2592,7 +2607,7 @@ Metadata: {
                             _editIconColor = Colors.black; // 重置图标颜色
                             _editIconBlinkTimer?.cancel(); // 取消正在进行的闪烁
                             _editIconBlinkTimer = null;
-                            
+
                             splitNewUndo();
 
                             // 关键：在切换到只读模式时，让编辑器失去焦点
@@ -2613,7 +2628,7 @@ Metadata: {
                           } else {
                             // 切换到编辑模式，可以选择性地请求焦点
                             // _focusNode.requestFocus();
-                            
+
                             revertOrDoSplitNewUndo();
                           }
                           // 更新编辑器的只读状态

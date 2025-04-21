@@ -55,7 +55,11 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
     if (port == null || port <= 0 || port > 65535) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('请输入有效的端口号 (1-65535)')),
+          const SnackBar(
+            content: Text('请输入有效的端口号 (1-65535)'),
+            duration: Duration(seconds: 1),
+            backgroundColor: Colors.red,
+          ),
         );
       }
       return;
@@ -74,6 +78,7 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('设置已保存'),
+          duration: Duration(seconds: 1),
           backgroundColor: Colors.green,
         ),
       );
@@ -85,7 +90,11 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
     if (port == null || port <= 0 || port > 65535) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('请输入有效的端口号 (1-65535)')),
+          const SnackBar(
+            content: Text('请输入有效的端口号 (1-65535)'),
+            duration: Duration(seconds: 1),
+            backgroundColor: Colors.red,
+          ),
         );
       }
       return;
@@ -98,11 +107,16 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
       final password = _passwordEnabled ? _passwordController.text : null;
 
       // 启动服务器
-      final success = await _socketService.startServer(port, password: password);
+      final success =
+          await _socketService.startServer(port, password: password);
 
       if (!success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('启动服务器失败: ${_socketService.errorMessage}')),
+          SnackBar(
+            content: Text('启动服务器失败: ${_socketService.errorMessage}'),
+            duration: Duration(seconds: 1),
+            backgroundColor: Colors.red,
+          ),
         );
       } else if (success) {
         // 保存端口设置
@@ -279,7 +293,8 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 16.0, vertical: 8.0),
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Row(
                                             children: [
@@ -304,30 +319,39 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
                                                   ],
                                                 ),
                                               ),
-                                              ValueListenableBuilder<SocketServiceStatus>(
-                                                valueListenable: _socketService.status,
-                                                builder: (context, status, child) {
-                                                  final isRunning = status == SocketServiceStatus.running;
+                                              ValueListenableBuilder<
+                                                  SocketServiceStatus>(
+                                                valueListenable:
+                                                    _socketService.status,
+                                                builder:
+                                                    (context, status, child) {
+                                                  final isRunning = status ==
+                                                      SocketServiceStatus
+                                                          .running;
                                                   return Row(
-                                                    mainAxisSize: MainAxisSize.min,
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
                                                     children: [
                                                       if (isRunning)
                                                         Tooltip(
-                                                          message: '服务运行时无法更改密码验证设置',
+                                                          message:
+                                                              '服务运行时无法更改密码验证设置',
                                                           child: const Icon(
                                                             Icons.info_outline,
                                                             size: 16,
-                                                            color: Colors.orange,
+                                                            color:
+                                                                Colors.orange,
                                                           ),
                                                         ),
                                                       const SizedBox(width: 8),
                                                       Switch(
                                                         value: _passwordEnabled,
                                                         onChanged: isRunning
-                                                            ? null  // 服务运行时禁用开关
+                                                            ? null // 服务运行时禁用开关
                                                             : (value) {
                                                                 setState(() {
-                                                                  _passwordEnabled = value;
+                                                                  _passwordEnabled =
+                                                                      value;
                                                                 });
                                                               },
                                                       ),
@@ -337,7 +361,8 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
                                               ),
                                             ],
                                           ),
-                                          if (_passwordEnabled) ...[  // 仅当启用密码验证时显示密码输入框
+                                          if (_passwordEnabled) ...[
+                                            // 仅当启用密码验证时显示密码输入框
                                             const SizedBox(height: 16),
                                             TextField(
                                               controller: _passwordController,
@@ -347,7 +372,9 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
                                                 border: OutlineInputBorder(),
                                               ),
                                               // obscureText: true,  // 密码输入模式
-                                              enabled: _socketService.status.value != SocketServiceStatus.running,
+                                              enabled: _socketService
+                                                      .status.value !=
+                                                  SocketServiceStatus.running,
                                             ),
                                           ],
                                         ],
