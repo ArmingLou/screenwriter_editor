@@ -101,6 +101,7 @@ class _EditorScreenState extends State<EditorScreen> {
   //仅在输入或删除文本时，刷新光标附近文本的语法高亮；否则，只要光标位置改变，都刷新光标附近文本的语法高亮。
 
   final List<Delta> _lastRedo = [];
+  final List<Delta> _splitOldUndo = [];
 
   final _formatQueue = <_FormatTask>[];
   static const _maxQueueLength = 2;
@@ -584,6 +585,8 @@ class _EditorScreenState extends State<EditorScreen> {
         return;
       }
 
+      revertOrDoSplitNewUndo();
+
       if (_openNewDocWaitInsertNotify || _openNewDocWaitDeleteNotify) {
         // 加载新文档
         if (change.change.last.key == 'insert') {
@@ -629,6 +632,9 @@ class _EditorScreenState extends State<EditorScreen> {
         } else {
           _historyRollback = true;
           _quillController.undo(); // 不能使用 _quillController.document.undo();
+          // TODO Arming (2025-04-21) : 已知问题，quillEditor 内部实现，可能会将多次连续输入操作的undo按一定策略动态合并成一个，导致不是每次键盘就产生一个undo，可能是多次输入，逐渐合并成一次undo。
+          // 这里就可能导致一个问题，undo时，原来只是想撤销回键盘输入的一次，实际却由于undo合并了，撤销一次却回退了多次操作的效果。而这些多次的操作，又可能包含切换到只读模式前的一些操作。与预期的只撤回到只读模式前的状态不一致。
+          // 经修改。这里的逻辑应该进入不了。因为已经修改成拦截键盘事件的方式，在只读模式下，不再会让 quillEditor 内容变化而回调 _quillController.document.changes 了。
           _quillController.document.history.stack.redo.clear();
           _quillController.document.history.stack.redo.addAll(_lastRedo);
           return;
@@ -651,6 +657,26 @@ class _EditorScreenState extends State<EditorScreen> {
     //   addFormatTask();
     //   // }
     // });
+  }
+
+  // TODO Arming (2025-04-21) : 已知问题，quillEditor 内部实现，可能会将多次连续输入操作的undo按一定策略动态合并成一个，导致不是每次键盘就产生一个undo，可能是多次输入，逐渐合并成一次undo。
+  // 在某些场景下，为避免 undo 的智能合并，强制新undo的实现。借助 clear历史历表的方式。等待下次 _quillController.document.changes 回调后，再加回去。
+  // 调用之后的新操作，保证会产生新的独立undo。但再后面的操作会继续智能合并，只保证新拆分一次。
+  // 请预期后面马上会有编辑操作，才调用，否则 undo ui 会判断为没有回滚操作，显示不可点击。 或者在进入只读模式后，显示不可点也没问题。
+  void splitNewUndo() {
+    _splitOldUndo.clear();
+    _splitOldUndo.addAll(_quillController.document.history.stack.undo);
+    _quillController.document.history.stack.undo.clear();
+    // 等待下次 _quillController.document.changes 回调后，再加回去。
+  }
+  // 撤回，比如退出 只读模式时。。或者实施拆分，当下次 编辑记录 产生时。
+  void revertOrDoSplitNewUndo() {
+    if (_splitOldUndo.isNotEmpty) {
+        _splitOldUndo.addAll(_quillController.document.history.stack.undo);
+        _quillController.document.history.stack.undo.clear();
+        _quillController.document.history.stack.undo.addAll(_splitOldUndo);
+        _splitOldUndo.clear();
+      }
   }
 
   void _onTapSlider(PointerEvent event) async {
@@ -1359,6 +1385,7 @@ class _EditorScreenState extends State<EditorScreen> {
       _editable = true; // 强制切换到编辑模式
       // needPopEditbar = true;
     }
+    splitNewUndo();
 
     _quillController.replaceText(0, _quillController.document.length - 1,
         content, const TextSelection.collapsed(offset: 0));
@@ -2329,48 +2356,50 @@ Metadata: {
           children: [
             Expanded(
               child: Shortcuts(
-                shortcuts: _editable ? <ShortcutActivator, Intent>{} : <ShortcutActivator, Intent>{
-                  // 只在只读模式下拦截键盘事件
-                  // 拦截所有键盘事件
-                  CharacterActivator(''):
-                      const BlockKeyboardIntent(), // 拦截所有字符输入
-                  // 添加常用的特殊键
-                  SingleActivator(LogicalKeyboardKey.enter):
-                      const BlockKeyboardIntent(),
-                  SingleActivator(LogicalKeyboardKey.backspace):
-                      const BlockKeyboardIntent(),
-                  SingleActivator(LogicalKeyboardKey.delete):
-                      const BlockKeyboardIntent(),
-                  SingleActivator(LogicalKeyboardKey.tab):
-                      const BlockKeyboardIntent(),
-                  SingleActivator(LogicalKeyboardKey.space):
-                      const BlockKeyboardIntent(),
-                  // 拦截常用的组合键
-                  SingleActivator(LogicalKeyboardKey.keyV, control: true):
-                      const BlockKeyboardIntent(), // Ctrl+V
-                  SingleActivator(LogicalKeyboardKey.keyV, meta: true):
-                      const BlockKeyboardIntent(), // Cmd+V
-                  SingleActivator(LogicalKeyboardKey.keyX, control: true):
-                      const BlockKeyboardIntent(), // Ctrl+X
-                  SingleActivator(LogicalKeyboardKey.keyX, meta: true):
-                      const BlockKeyboardIntent(), // Cmd+X
-                  SingleActivator(LogicalKeyboardKey.keyC, control: true):
-                      const BlockKeyboardIntent(), // Ctrl+C
-                  SingleActivator(LogicalKeyboardKey.keyC, meta: true):
-                      const BlockKeyboardIntent(), // Cmd+C
-                  SingleActivator(LogicalKeyboardKey.keyA, control: true):
-                      const BlockKeyboardIntent(), // Ctrl+A
-                  SingleActivator(LogicalKeyboardKey.keyA, meta: true):
-                      const BlockKeyboardIntent(), // Cmd+A
-                  SingleActivator(LogicalKeyboardKey.keyZ, control: true):
-                      const BlockKeyboardIntent(), // Ctrl+Z
-                  SingleActivator(LogicalKeyboardKey.keyZ, meta: true):
-                      const BlockKeyboardIntent(), // Cmd+Z
-                  SingleActivator(LogicalKeyboardKey.keyY, control: true):
-                      const BlockKeyboardIntent(), // Ctrl+Y
-                  SingleActivator(LogicalKeyboardKey.keyY, meta: true):
-                      const BlockKeyboardIntent(), // Cmd+Y
-                },
+                shortcuts: _editable
+                    ? <ShortcutActivator, Intent>{}
+                    : <ShortcutActivator, Intent>{
+                        // 只在只读模式下拦截键盘事件
+                        // 拦截所有键盘事件
+                        CharacterActivator(''):
+                            const BlockKeyboardIntent(), // 拦截所有字符输入
+                        // 添加常用的特殊键
+                        SingleActivator(LogicalKeyboardKey.enter):
+                            const BlockKeyboardIntent(),
+                        SingleActivator(LogicalKeyboardKey.backspace):
+                            const BlockKeyboardIntent(),
+                        SingleActivator(LogicalKeyboardKey.delete):
+                            const BlockKeyboardIntent(),
+                        SingleActivator(LogicalKeyboardKey.tab):
+                            const BlockKeyboardIntent(),
+                        SingleActivator(LogicalKeyboardKey.space):
+                            const BlockKeyboardIntent(),
+                        // 拦截常用的组合键
+                        SingleActivator(LogicalKeyboardKey.keyV, control: true):
+                            const BlockKeyboardIntent(), // Ctrl+V
+                        SingleActivator(LogicalKeyboardKey.keyV, meta: true):
+                            const BlockKeyboardIntent(), // Cmd+V
+                        SingleActivator(LogicalKeyboardKey.keyX, control: true):
+                            const BlockKeyboardIntent(), // Ctrl+X
+                        SingleActivator(LogicalKeyboardKey.keyX, meta: true):
+                            const BlockKeyboardIntent(), // Cmd+X
+                        SingleActivator(LogicalKeyboardKey.keyC, control: true):
+                            const BlockKeyboardIntent(), // Ctrl+C
+                        SingleActivator(LogicalKeyboardKey.keyC, meta: true):
+                            const BlockKeyboardIntent(), // Cmd+C
+                        SingleActivator(LogicalKeyboardKey.keyA, control: true):
+                            const BlockKeyboardIntent(), // Ctrl+A
+                        SingleActivator(LogicalKeyboardKey.keyA, meta: true):
+                            const BlockKeyboardIntent(), // Cmd+A
+                        SingleActivator(LogicalKeyboardKey.keyZ, control: true):
+                            const BlockKeyboardIntent(), // Ctrl+Z
+                        SingleActivator(LogicalKeyboardKey.keyZ, meta: true):
+                            const BlockKeyboardIntent(), // Cmd+Z
+                        SingleActivator(LogicalKeyboardKey.keyY, control: true):
+                            const BlockKeyboardIntent(), // Ctrl+Y
+                        SingleActivator(LogicalKeyboardKey.keyY, meta: true):
+                            const BlockKeyboardIntent(), // Cmd+Y
+                      },
                 child: Actions(
                   actions: <Type, Action<Intent>>{
                     BlockKeyboardIntent: BlockKeyboardAction(() {
@@ -2510,8 +2539,8 @@ Metadata: {
                             height: 24,
                             child: Icon(
                               isConnected
-                                  ? Icons.file_download_sharp
-                                  : Icons.file_download_off_sharp,
+                                  ? Icons.import_export_outlined
+                                  : Icons.mobiledata_off_outlined,
                               color: isConnected ? Colors.green : Colors.black,
                               size: 18,
                             ),
@@ -2563,6 +2592,8 @@ Metadata: {
                             _editIconColor = Colors.black; // 重置图标颜色
                             _editIconBlinkTimer?.cancel(); // 取消正在进行的闪烁
                             _editIconBlinkTimer = null;
+                            
+                            splitNewUndo();
 
                             // 关键：在切换到只读模式时，让编辑器失去焦点
                             // FocusScope.of(context).unfocus();
@@ -2582,6 +2613,8 @@ Metadata: {
                           } else {
                             // 切换到编辑模式，可以选择性地请求焦点
                             // _focusNode.requestFocus();
+                            
+                            revertOrDoSplitNewUndo();
                           }
                           // 更新编辑器的只读状态
                           // _quillController.readOnly = !_editable;
