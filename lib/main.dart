@@ -125,6 +125,10 @@ class _EditorScreenState extends State<EditorScreen> {
   final int _cursorAccelerationStep = 5; // 每次加速减少的毫秒数
   int _longPressStartTime = 0; // 长按开始时间
 
+  // 点击检测相关变量
+  Offset? _pointerDownPosition; // 指针按下的位置
+  DateTime? _pointerDownTime; // 指针按下的时间
+
   // 只读模式下用户输入检测相关变量
   int _readOnlyInputCount = 0; // 只读模式下用户输入次数
   int _lastReadOnlyInputTime = 0; // 最近一次只读模式下用户输入的时间
@@ -576,8 +580,13 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-  bool _countHitBlink() {
+  bool _countHitBlink({bool force = false}) {
     if (!_editable) {
+      if (force) {
+        _readOnlyInputCount = 0;
+        _startEditIconBlinking();
+        return true;
+      }
       // 处理只读模式下的计数逻辑
       int currentTime = DateTime.now().millisecondsSinceEpoch;
       if (currentTime - _lastReadOnlyInputTime > 1400) {
@@ -2446,8 +2455,36 @@ Metadata: {
                       // 使用 Listener 来捕获指针事件，但不拦截事件传递
                       onPointerDown: (event) {
                         if (!_editable) {
-                          _countHitBlink();
+                          // 记录按下的位置和时间
+                          _pointerDownPosition = event.position;
+                          _pointerDownTime = DateTime.now();
                         }
+                      },
+                      onPointerUp: (event) {
+                        if (!_editable &&
+                            _pointerDownPosition != null &&
+                            _pointerDownTime != null) {
+                          // 计算位置偏移和时间差
+                          final offset =
+                              (event.position - _pointerDownPosition!).distance;
+                          final timeDiff = DateTime.now()
+                              .difference(_pointerDownTime!)
+                              .inMilliseconds;
+
+                          // 如果偏移小且时间短，则认为是点击而非滑动
+                          if (offset < 10 && timeDiff < 300) {
+                            _countHitBlink(); 
+                          }
+
+                          // 重置状态
+                          _pointerDownPosition = null;
+                          _pointerDownTime = null;
+                        }
+                      },
+                      onPointerCancel: (event) {
+                        // 重置状态
+                        _pointerDownPosition = null;
+                        _pointerDownTime = null;
                       },
                       child: QuillEditor(
                         focusNode: _focusNode,

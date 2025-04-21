@@ -450,7 +450,7 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
                                   const Text(
                                     '1. 设置端口并启动服务器\n'
                                     '2. 确保客户端和服务端在同一网络下\n'
-                                    '3. 在客户端中输入上面显示的WS地址\n'
+                                    '3. 在客户端连接上面显示的WS地址\n'
                                     '4. 客户端使用推送/拉取功能同步内容',
                                   ),
                                   const SizedBox(height: 16),
