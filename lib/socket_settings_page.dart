@@ -142,7 +142,7 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('远程同步设置'),
+        title: const Text('远程同步服务端'),
       ),
       // 使用 resizeToAvoidBottomInset 确保键盘弹出时不会影响布局
       resizeToAvoidBottomInset: true,
@@ -449,9 +449,9 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
                                   const SizedBox(height: 8),
                                   const Text(
                                     '1. 设置端口并启动服务器\n'
-                                    '2. 确保PC端和移动设备在同一网络下\n'
-                                    '3. 在PC端VSCode扩展中输入上面显示的WebSocket地址\n'
-                                    '4. 使用fetch命令获取内容，push命令推送内容',
+                                    '2. 确保客户端和服务端在同一网络下\n'
+                                    '3. 在客户端中输入上面显示的WS地址\n'
+                                    '4. 客户端使用推送/拉取功能同步内容',
                                   ),
                                   const SizedBox(height: 16),
                                 ],

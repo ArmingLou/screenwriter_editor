@@ -391,7 +391,7 @@ class _SocketClientPageState extends State<SocketClientPage> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
-                          '保存的服务器',
+                          '保存的远程服务器',
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -402,7 +402,7 @@ class _SocketClientPageState extends State<SocketClientPage> {
                             _showAddServerDialog();
                           },
                           icon: const Icon(Icons.add),
-                          label: const Text('添加服务器'),
+                          label: const Text('添加远程服务器'),
                         ),
                       ],
                     ),
@@ -412,7 +412,7 @@ class _SocketClientPageState extends State<SocketClientPage> {
                     Expanded(
                       child: _savedServers.isEmpty
                           ? const Center(
-                              child: Text('没有保存的服务器，点击"添加服务器"按钮添加'),
+                              child: Text('没有保存的远程服务器，点击"添加远程服务器"按钮添加'),
                             )
                           : ListView.builder(
                               itemCount: _savedServers.length,

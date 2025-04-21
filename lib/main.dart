@@ -576,6 +576,26 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
+  bool _countHitBlink() {
+    if (!_editable) {
+      // 处理只读模式下的计数逻辑
+      int currentTime = DateTime.now().millisecondsSinceEpoch;
+      if (currentTime - _lastReadOnlyInputTime > 1400) {
+        _readOnlyInputCount = 1;
+      } else {
+        _readOnlyInputCount++;
+      }
+      _lastReadOnlyInputTime = currentTime;
+
+      if (_readOnlyInputCount >= 3) {
+        _readOnlyInputCount = 0;
+        _startEditIconBlinking();
+        return true;
+      }
+    }
+    return false;
+  }
+
   void _setupFormatListener() {
     // 监听文档变化
     _quillController.document.changes.listen((change) {
@@ -608,25 +628,7 @@ class _EditorScreenState extends State<EditorScreen> {
           // undo 之后的回调。
           _historyRollback = false;
 
-          // 在只读模式下，用户操作了键盘输入
-          // 检测并计数用户输入
-          int currentTime = DateTime.now().millisecondsSinceEpoch;
-
-          // 如果距离上次输入超过3秒，重置计数器
-          if (currentTime - _lastReadOnlyInputTime > 3000) {
-            _readOnlyInputCount = 1;
-          } else {
-            _readOnlyInputCount++;
-          }
-
-          // 更新最近一次输入时间
-          _lastReadOnlyInputTime = currentTime;
-
-          // 如果5秒内触发了3次或以上，启动图标闪烁
-          if (_readOnlyInputCount >= 3) {
-            _readOnlyInputCount = 0; // 重置计数器
-            _startEditIconBlinking(); // 启动图标闪烁
-          }
+          _countHitBlink();
 
           return;
         } else {
@@ -777,6 +779,9 @@ class _EditorScreenState extends State<EditorScreen> {
   // }
 
   void whenChangeSlect(TextSelection t) {
+    // 当只读模式下，即使已经屏蔽了键盘事件，点击编辑面板也会回调到此，更新光标位置（虽然光标不可见）
+    // _countHitBlink();
+
     int total = _quillController.document.length - 1;
     if (total < 0) total = 0;
     _charsLenNotifier.value = [
@@ -1008,12 +1013,16 @@ class _EditorScreenState extends State<EditorScreen> {
     if (_isFilePickerActive) return;
     _isFilePickerActive = true;
 
-    final status =
-        await [Permission.manageExternalStorage, Permission.storage].request();
-    // if(status != PermissionStatus.granted){ //就算没有允许的情况下，也可能过成功写入新文件。 相反，就算允许了，也会可能出现权限问题无法写入。申请一次，总比不申请好。
-    //   _showError('没有获取到文件读写权限');
-    //   return;
-    // }
+    if (Platform.isAndroid || Platform.isIOS) {
+      final status = await [
+        Permission.manageExternalStorage,
+        Permission.storage
+      ].request();
+      // if(status != PermissionStatus.granted){ //就算没有允许的情况下，也可能过成功写入新文件。 相反，就算允许了，也会可能出现权限问题无法写入。申请一次，总比不申请好。
+      //   _showError('没有获取到文件读写权限');
+      //   return;
+      // }
+    }
 
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -1145,14 +1154,16 @@ class _EditorScreenState extends State<EditorScreen> {
         return;
       }
 
-      final status = await [
-        Permission.manageExternalStorage,
-        Permission.storage
-      ].request();
-      // if(status != PermissionStatus.granted){ //就算没有允许的情况下，也可能过成功写入新文件。 相反，就算允许了，也会可能出现权限问题无法写入。申请一次，总比不申请好。
-      //   _showError('没有获取到文件读写权限');
-      //   return;
-      // }
+      if (Platform.isAndroid || Platform.isIOS) {
+        final status = await [
+          Permission.manageExternalStorage,
+          Permission.storage
+        ].request();
+        // if(status != PermissionStatus.granted){ //就算没有允许的情况下，也可能过成功写入新文件。 相反，就算允许了，也会可能出现权限问题无法写入。申请一次，总比不申请好。
+        //   _showError('没有获取到文件读写权限');
+        //   return;
+        // }
+      }
 
       if (Platform.isIOS || (!savePath.contains('/') && !Platform.isAndroid)) {
         // ios 每次保存都要选择保存路径，是另存为，只能支持这样了。控件 open file 拿到的是临时文件路径，没办法拿到实际。
@@ -2115,9 +2126,7 @@ Metadata: {
                         disabledColor: disbaleColor,
                         icon: Icon(Icons.undo, size: iconSize),
                         tooltip: '撤销',
-                        onPressed: _hasUndo()
-                            ? _undo
-                            : null,
+                        onPressed: _hasUndo() ? _undo : null,
                         visualDensity: visualDensity,
                       ),
                     ),
@@ -2419,22 +2428,7 @@ Metadata: {
                   actions: <Type, Action<Intent>>{
                     BlockKeyboardIntent: BlockKeyboardAction(() {
                       // 只在只读模式下拦截键盘事件
-                      if (!_editable) {
-                        // 处理只读模式下的计数逻辑
-                        int currentTime = DateTime.now().millisecondsSinceEpoch;
-                        if (currentTime - _lastReadOnlyInputTime > 3000) {
-                          _readOnlyInputCount = 1;
-                        } else {
-                          _readOnlyInputCount++;
-                        }
-                        _lastReadOnlyInputTime = currentTime;
-
-                        if (_readOnlyInputCount >= 3) {
-                          _readOnlyInputCount = 0;
-                          _startEditIconBlinking();
-                        }
-                        return null; // 拦截事件
-                      }
+                      _countHitBlink();
                       return null; // 在编辑模式下不拦截，允许事件传递
                     }),
                   },
@@ -2448,18 +2442,23 @@ Metadata: {
                         // 如果在只读模式下获得焦点，可以添加额外的处理
                       }
                     },
-                    child: QuillEditor(
-                      focusNode: _focusNode,
-                      // FocusNode(skipTraversal: !_editable), // 在只读模式下跳过焦点遍历
-                      scrollController: _scrollController,
-                      controller: _quillController,
-                      config: QuillEditorConfig(
-                        // enableInteractiveSelection: _editable,
-                        // enableSelectionToolbar: _editable,
-                        scrollable: true,
-                        autoFocus: false,
-                        expands: true,
-                        padding: const EdgeInsets.all(8),
+                    child: Listener(
+                      // 使用 Listener 来捕获指针事件，但不拦截事件传递
+                      onPointerDown: (event) {
+                        if (!_editable) {
+                          _countHitBlink();
+                        }
+                      },
+                      child: QuillEditor(
+                        focusNode: _focusNode,
+                        scrollController: _scrollController,
+                        controller: _quillController,
+                        config: QuillEditorConfig(
+                          scrollable: true,
+                          autoFocus: false,
+                          expands: true,
+                          padding: const EdgeInsets.all(8),
+                        ),
                       ),
                     ),
                   ),
@@ -2598,7 +2597,7 @@ Metadata: {
                       ),
                       // tooltip: '切换只读/编辑模式',
                       onTap: () {
-                        _showInfo("进入${_editable ? '只读' : '编辑'}模式");
+                        _showInfo("${_editable ? '👀 只读' : '✍️ 编辑'}模式");
                         setState(() {
                           _editable = !_editable;
                           if (!_editable) {
