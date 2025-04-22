@@ -857,6 +857,112 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
+  // 显示Socket服务端操作菜单
+  void _showSocketServerMenu(BuildContext context) {
+    // 获取可用的IP地址
+    final ipAddresses = _socketService.getLocalIpAddresses();
+    final port = _socketService.currentPort;
+
+    // 获取密码信息
+    SharedPreferences.getInstance().then((prefs) {
+      final password = prefs.getString('socket_password') ?? '';
+      final hasPassword = password.isNotEmpty;
+
+      if (mounted) {
+        showModalBottomSheet(
+          context: context,
+          builder: (context) => Container(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  title: const Text('远程同步服务器已启动'),
+                  subtitle: Text('端口: $port'),
+                  leading: const Icon(Icons.cloud_circle, color: Colors.green),
+                ),
+                if (hasPassword)
+                  ListTile(
+                    title: const Text('密码验证'),
+                    subtitle: Text('当前密码: $password'),
+                    leading: const Icon(Icons.password, color: Colors.orange),
+                  ),
+                const Divider(),
+                FutureBuilder<List<String>>(
+                  future: ipAddresses,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const ListTile(
+                        title: Text('正在获取IP地址...'),
+                        leading: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      );
+                    } else if (snapshot.hasError ||
+                        !snapshot.hasData ||
+                        snapshot.data!.isEmpty) {
+                      return const ListTile(
+                        title: Text('无法获取IP地址'),
+                        leading: Icon(Icons.error_outline, color: Colors.red),
+                      );
+                    } else {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Padding(
+                            padding:
+                                EdgeInsets.only(left: 16, top: 8, bottom: 8),
+                            child: Text('连接地址:',
+                                style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                          ...snapshot.data!.map((ip) => ListTile(
+                                title: Text('ws://$ip:$port'),
+                                leading:
+                                    const Icon(Icons.link, color: Colors.blue),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.copy),
+                                  onPressed: () {
+                                    Clipboard.setData(
+                                        ClipboardData(text: 'ws://$ip:$port'));
+                                    Navigator.pop(context);
+                                    if (mounted) {
+                                      _showInfo('连接地址已复制到剪贴板');
+                                    }
+                                  },
+                                  tooltip: '复制地址',
+                                ),
+                              )),
+                        ],
+                      );
+                    }
+                  },
+                ),
+                const Divider(),
+                ListTile(
+                  title: const Text('停止服务器'),
+                  leading: const Icon(Icons.stop_circle, color: Colors.red),
+                  onTap: () {
+                    // 先关闭菜单，再停止服务器，避免异步问题
+                    Navigator.pop(context);
+                    // 使用 Future.microtask 确保在菜单关闭后再停止服务器
+                    Future.microtask(() async {
+                      await _socketService.stopServer();
+                      if (mounted) {
+                        _showInfo('远程同步服务器已停止');
+                      }
+                    });
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+    });
+  }
+
   // 显示Socket客户端操作菜单
   void _showSocketClientMenu(BuildContext context) {
     final socketClient = SocketClient();
@@ -891,7 +997,9 @@ class _EditorScreenState extends State<EditorScreen> {
                 final content = _docText();
                 socketClient.pushContent(content);
                 Navigator.pop(context);
-                _showInfo('内容已推送到远程服务器');
+                if (mounted) {
+                  _showInfo('内容已推送到远程服务器');
+                }
               },
             ),
             ListTile(
@@ -901,7 +1009,9 @@ class _EditorScreenState extends State<EditorScreen> {
               onTap: () {
                 socketClient.fetchContent();
                 Navigator.pop(context);
-                _showInfo('正在从远程服务器获取内容...');
+                if (mounted) {
+                  _showInfo('正在从远程服务器获取内容...');
+                }
               },
             ),
           ],
@@ -2473,7 +2583,7 @@ Metadata: {
 
                           // 如果偏移小且时间短，则认为是点击而非滑动
                           if (offset < 10 && timeDiff < 300) {
-                            _countHitBlink(); 
+                            _countHitBlink();
                           }
 
                           // 重置状态
@@ -2561,13 +2671,21 @@ Metadata: {
                           ),
                           // tooltip: isRunning ? '远程同步服务已启动' : '远程同步设置',
                           onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    const SocketSettingsPage(),
-                              ),
-                            );
+                            final isRunning = _socketService.status.value ==
+                                SocketServiceStatus.running;
+                            if (isRunning) {
+                              // 服务器已启动，显示操作菜单
+                              _showSocketServerMenu(context);
+                            } else {
+                              // 服务器未启动，跳转到设置页面
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const SocketSettingsPage(),
+                                ),
+                              );
+                            }
                           },
                           // padding: EdgeInsets.zero,
                           // constraints: BoxConstraints(),
