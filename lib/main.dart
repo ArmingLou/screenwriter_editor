@@ -139,6 +139,9 @@ class _EditorScreenState extends State<EditorScreen> {
   final SocketService _socketService = SocketService();
   StreamSubscription<SocketEvent>? _socketEventSubscription;
 
+  // 服务端菜单状态更新函数，用于在客户端连接/断开时刷新菜单
+  StateSetter? _socketServerMenuState;
+
   // Statis? statisGlobal;
 
   int _lastSelection = -1;
@@ -828,6 +831,28 @@ class _EditorScreenState extends State<EditorScreen> {
             _replaceTextFromRemote(event.content!);
           }
           break;
+        case SocketEventType.clientConnected:
+        case SocketEventType.clientDisconnected:
+        case SocketEventType.clientBanned:
+        case SocketEventType.blacklistChanged:
+          // 当有客户端连接、断开、被禁止或黑名单变化时，刷新服务端菜单
+          // 使用全局变量记录菜单状态
+          if (_socketServerMenuState != null) {
+            // 如果菜单已打开，则刷新菜单
+            // 使用 scheduleMicrotask 确保在 UI 线程中执行
+            scheduleMicrotask(() {
+              // 在调用setState前检查组件是否仍然挂载，以及_socketServerMenuState是否仍然有效
+              if (mounted && _socketServerMenuState != null) {
+                try {
+                  _socketServerMenuState!(() {});
+                } catch (e) {
+                  // 如果出现异常，清空状态更新函数引用
+                  _socketServerMenuState = null;
+                }
+              }
+            });
+          }
+          break;
       }
     });
 
@@ -858,109 +883,300 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   // 显示Socket服务端操作菜单
-  void _showSocketServerMenu(BuildContext context) {
+  Future<void> _showSocketServerMenu(BuildContext context) async {
     // 获取可用的IP地址
     final ipAddresses = _socketService.getLocalIpAddresses();
     final port = _socketService.currentPort;
 
+    // 获取已连接的客户端信息
+    final connectedClients = _socketService.getConnectedClients();
+
+    // 获取已禁止的客户端列表
+    final bannedIPs = _socketService.getBannedIPs();
+
     // 获取密码信息
-    SharedPreferences.getInstance().then((prefs) {
+    SharedPreferences.getInstance().then((prefs) async {
       final password = prefs.getString('socket_password') ?? '';
       final hasPassword = password.isNotEmpty;
 
       if (mounted) {
-        showModalBottomSheet(
-          context: context,
-          builder: (context) => Container(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  title: const Text('远程同步服务器已启动'),
-                  subtitle: Text('端口: $port'),
-                  leading: const Icon(Icons.cloud_circle, color: Colors.green),
-                ),
-                if (hasPassword)
-                  ListTile(
-                    title: const Text('密码验证'),
-                    subtitle: Text('当前密码: $password'),
-                    leading: const Icon(Icons.password, color: Colors.orange),
-                  ),
-                const Divider(),
-                FutureBuilder<List<String>>(
-                  future: ipAddresses,
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const ListTile(
-                        title: Text('正在获取IP地址...'),
-                        leading: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      );
-                    } else if (snapshot.hasError ||
-                        !snapshot.hasData ||
-                        snapshot.data!.isEmpty) {
-                      return const ListTile(
-                        title: Text('无法获取IP地址'),
-                        leading: Icon(Icons.error_outline, color: Colors.red),
-                      );
-                    } else {
-                      return Column(
+        // 显示菜单
+        final BuildContext currentContext = context;
+        await showModalBottomSheet(
+            context: currentContext,
+            isScrollControlled: true, // 允许内容滚动
+            builder: (context) => StatefulBuilder(
+                    builder: (BuildContext context, StateSetter setState) {
+                  // 存储状态更新函数，供事件监听器使用
+                  _socketServerMenuState = setState;
+
+                  // 获取最新的客户端列表和黑名单
+                  final connectedClients = _socketService.getConnectedClients();
+                  final bannedIPs = _socketService.getBannedIPs();
+
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    // 限制最大高度为屏幕高度的80%
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.8,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Padding(
-                            padding:
-                                EdgeInsets.only(left: 16, top: 8, bottom: 8),
-                            child: Text('连接地址:',
-                                style: TextStyle(fontWeight: FontWeight.bold)),
+                          ListTile(
+                            title: const Text('远程同步服务器已启动'),
+                            subtitle: Text('端口: $port'),
+                            leading: const Icon(Icons.cloud_circle,
+                                color: Colors.green),
                           ),
-                          ...snapshot.data!.map((ip) => ListTile(
-                                title: Text('ws://$ip:$port'),
-                                leading:
-                                    const Icon(Icons.link, color: Colors.blue),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.copy),
-                                  onPressed: () {
-                                    Clipboard.setData(
-                                        ClipboardData(text: 'ws://$ip:$port'));
-                                    Navigator.pop(context);
-                                    if (mounted) {
-                                      _showInfo('连接地址已复制到剪贴板');
-                                    }
-                                  },
-                                  tooltip: '复制地址',
-                                ),
-                              )),
+                          if (hasPassword)
+                            ListTile(
+                              title: const Text('密码验证'),
+                              subtitle: Text('当前密码: $password'),
+                              leading: const Icon(Icons.password,
+                                  color: Colors.orange),
+                            ),
+                          const Divider(),
+
+                          // 连接地址部分
+                          FutureBuilder<List<String>>(
+                            future: ipAddresses,
+                            builder: (context, snapshot) {
+                              if (snapshot.connectionState ==
+                                  ConnectionState.waiting) {
+                                return const ListTile(
+                                  title: Text('正在获取IP地址...'),
+                                  leading: SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  ),
+                                );
+                              } else if (snapshot.hasError ||
+                                  !snapshot.hasData ||
+                                  snapshot.data!.isEmpty) {
+                                return const ListTile(
+                                  title: Text('无法获取IP地址'),
+                                  leading: Icon(Icons.error_outline,
+                                      color: Colors.red),
+                                );
+                              } else {
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Padding(
+                                      padding: EdgeInsets.only(
+                                          left: 16, top: 8, bottom: 8),
+                                      child: Text('本服务器连接地址:',
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.bold)),
+                                    ),
+                                    ...snapshot.data!.map((ip) => ListTile(
+                                          title: Text('ws://$ip:$port'),
+                                          leading: const Icon(Icons.link,
+                                              color: Colors.blue),
+                                          trailing: IconButton(
+                                            icon: const Icon(Icons.copy),
+                                            onPressed: () {
+                                              Clipboard.setData(ClipboardData(
+                                                  text: 'ws://$ip:$port'));
+                                              if (mounted) {
+                                                _showInfo('连接地址已复制到剪贴板');
+                                              }
+                                            },
+                                            tooltip: '复制地址',
+                                          ),
+                                        )),
+                                  ],
+                                );
+                              }
+                            },
+                          ),
+
+                          // 已连接客户端部分
+                          if (connectedClients.isNotEmpty) ...[
+                            const Divider(),
+                            const Padding(
+                              padding:
+                                  EdgeInsets.only(left: 16, top: 8, bottom: 8),
+                              child: Text('已连接客户端:',
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.bold)),
+                            ),
+                            ...connectedClients.map((client) => ListTile(
+                                  title: Text(client['ip'] as String),
+                                  // subtitle: Text(
+                                  //     client['authenticated'] ? '已认证' : '未认证'),
+                                  leading: const Icon(Icons.computer,
+                                      color: Colors.blue),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      // 断开连接按钮
+                                      IconButton(
+                                        icon: const Icon(Icons.link_off),
+                                        tooltip: '断开连接',
+                                        onPressed: () async {
+                                          // 先关闭菜单，再断开连接，避免异步问题
+                                          Navigator.pop(context);
+                                          // 使用 Future.microtask 确保在菜单关闭后再断开连接
+                                          Future.microtask(() async {
+                                            final success = await _socketService
+                                                .disconnectClient(
+                                                    client['socket']
+                                                        as WebSocket);
+                                            if (mounted) {
+                                              if (success) {
+                                                _showInfo('已断开客户端连接');
+                                                // 刷新菜单
+                                                // 使用setState刷新界面，而不是直接调用_showSocketServerMenu
+                                                setState(() {});
+                                                // 延迟一下再显示菜单
+                                                // 使用定时器而不是 Future.delayed，避免 BuildContext 问题
+                                                Timer(
+                                                    const Duration(
+                                                        milliseconds: 300),
+                                                    () async {
+                                                  if (mounted) {
+                                                    // 使用当前的 context
+                                                    await _showSocketServerMenu(
+                                                        this.context);
+                                                  }
+                                                });
+                                              } else {
+                                                _showError('断开客户端连接失败');
+                                              }
+                                            }
+                                          });
+                                        },
+                                      ),
+                                      // 禁止客户端按钮
+                                      IconButton(
+                                        icon: const Icon(Icons.block),
+                                        tooltip: '本次禁止',
+                                        color: Colors.red,
+                                        onPressed: () async {
+                                          // 先关闭菜单，再禁止客户端，避免异步问题
+                                          Navigator.pop(context);
+                                          // 使用 Future.microtask 确保在菜单关闭后再禁止客户端
+                                          Future.microtask(() async {
+                                            final success = await _socketService
+                                                .banClient(client['socket']
+                                                    as WebSocket);
+                                            if (mounted) {
+                                              if (success) {
+                                                _showInfo('已禁止客户端连接');
+                                                // 刷新菜单
+                                                // 使用setState刷新界面，而不是直接调用_showSocketServerMenu
+                                                setState(() {});
+                                                // 延迟一下再显示菜单
+                                                // 使用定时器而不是 Future.delayed，避免 BuildContext 问题
+                                                Timer(
+                                                    const Duration(
+                                                        milliseconds: 300),
+                                                    () async {
+                                                  if (mounted) {
+                                                    // 使用当前的 context
+                                                    await _showSocketServerMenu(
+                                                        this.context);
+                                                  }
+                                                });
+                                              } else {
+                                                _showError('禁止客户端连接失败');
+                                              }
+                                            }
+                                          });
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                )),
+                          ],
+
+                          // 已禁止客户端部分
+                          if (bannedIPs.isNotEmpty) ...[
+                            const Divider(),
+                            const Padding(
+                              padding:
+                                  EdgeInsets.only(left: 16, top: 8, bottom: 8),
+                              child: Text('本次已禁止客户端:',
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.bold)),
+                            ),
+                            ...bannedIPs.map((ip) => ListTile(
+                                  title: Text(ip),
+                                  leading: const Icon(Icons.block,
+                                      color: Colors.red),
+                                  trailing: IconButton(
+                                    icon: const Icon(Icons.delete_outline),
+                                    tooltip: '移除黑名单',
+                                    onPressed: () {
+                                      // 先关闭菜单，再移除黑名单，避免异步问题
+                                      Navigator.pop(context);
+                                      // 使用 Future.microtask 确保在菜单关闭后再移除黑名单
+                                      Future.microtask(() {
+                                        final success = _socketService
+                                            .removeFromBlacklist(ip);
+                                        if (mounted) {
+                                          if (success) {
+                                            _showInfo('已从黑名单中移除 $ip');
+                                            // 刷新菜单
+                                            // 使用setState刷新界面，而不是直接调用_showSocketServerMenu
+                                            setState(() {});
+                                            // 延迟一下再显示菜单
+                                            // 使用定时器而不是 Future.delayed，避免 BuildContext 问题
+                                            Timer(
+                                                const Duration(
+                                                    milliseconds: 300),
+                                                () async {
+                                              if (mounted) {
+                                                // 使用当前的 context
+                                                await _showSocketServerMenu(
+                                                    this.context);
+                                              }
+                                            });
+                                          } else {
+                                            _showError('从黑名单中移除失败');
+                                          }
+                                        }
+                                      });
+                                    },
+                                  ),
+                                )),
+                          ],
+
+                          const Divider(),
+
+                          // 停止服务器按钮
+                          ListTile(
+                            title: const Text('停止服务器'),
+                            leading: const Icon(Icons.stop_circle,
+                                color: Colors.red),
+                            onTap: () {
+                              // 先关闭菜单，再停止服务器，避免异步问题
+                              Navigator.pop(context);
+                              // 使用 Future.microtask 确保在菜单关闭后再停止服务器
+                              Future.microtask(() async {
+                                await _socketService.stopServer();
+                                if (mounted) {
+                                  _showInfo('远程同步服务器已停止');
+                                }
+                              });
+                            },
+                          ),
                         ],
-                      );
-                    }
-                  },
-                ),
-                const Divider(),
-                ListTile(
-                  title: const Text('停止服务器'),
-                  leading: const Icon(Icons.stop_circle, color: Colors.red),
-                  onTap: () {
-                    // 先关闭菜单，再停止服务器，避免异步问题
-                    Navigator.pop(context);
-                    // 使用 Future.microtask 确保在菜单关闭后再停止服务器
-                    Future.microtask(() async {
-                      await _socketService.stopServer();
-                      if (mounted) {
-                        _showInfo('远程同步服务器已停止');
-                      }
-                    });
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
+                      ),
+                    ),
+                  );
+                }));
       }
     });
+
+    // 菜单关闭后，清除状态更新函数
+    _socketServerMenuState = null;
   }
 
   // 显示Socket客户端操作菜单
@@ -2675,7 +2891,9 @@ Metadata: {
                                 SocketServiceStatus.running;
                             if (isRunning) {
                               // 服务器已启动，显示操作菜单
-                              _showSocketServerMenu(context);
+                              _showSocketServerMenu(context).then((_) {
+                                // 菜单关闭后的操作（如果需要）
+                              });
                             } else {
                               // 服务器未启动，跳转到设置页面
                               Navigator.push(

@@ -193,12 +193,8 @@ class SocketClient {
     }).then((success) {
       return success;
     }).catchError((e) {
-      errorMessage = e.toString();
-      status.value = SocketClientStatus.error;
-      _eventController.add(SocketClientEvent(
-        type: SocketClientEventType.error,
-        errorMessage: e.toString(),
-      ));
+      // 使用_handleError方法处理错误，避免重复触发错误事件
+      _handleError(e.toString());
       return false;
     });
   }
@@ -236,7 +232,47 @@ class SocketClient {
       final wsUrl = 'ws://${server.host}:${server.port}';
 
       // 创建WebSocket连接
+      // 使用 HttpClient 先检查是否被禁止（403）
+      final httpClient = HttpClient();
+      httpClient.connectionTimeout = const Duration(seconds: 5);
+
+      try {
+        // 先发送 HTTP 请求检查服务器状态
+        final request = await httpClient.getUrl(Uri.parse('http://${server.host}:${server.port}'));
+        final response = await request.close();
+
+        // 如果返回 403，表示客户端被禁止
+        if (response.statusCode == 403) {
+          throw Exception('连接被服务器拒绝：您的 IP 地址已被禁止');
+        }
+
+        // 关闭响应流
+        await response.drain<void>();
+      } catch (e) {
+        // 如果是 403 错误，直接抛出
+        if (e.toString().contains('403')) {
+          throw Exception('连接被服务器拒绝：您的 IP 地址已被禁止');
+        }
+        // 其他 HTTP 错误可以忽略，因为服务器可能不支持 HTTP 请求
+        // 继续尝试 WebSocket 连接
+      } finally {
+        httpClient.close();
+      }
+
+      // 创建WebSocket连接
       _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
+
+      // 等待一下，确保连接已经完全建立
+      // 这里增加超时检测，避免连接卡住
+      bool connectionEstablished = false;
+      final connectionFuture = _channel!.ready.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          throw TimeoutException('WebSocket 连接超时');
+        },
+      ).then((_) {
+        connectionEstablished = true;
+      });
 
       // 监听消息
       _channel!.stream.listen(
@@ -244,18 +280,36 @@ class SocketClient {
           _handleMessage(message);
         },
         onDone: () {
-          _handleDisconnect();
+          // 如果连接还没建立就断开，可能是被服务器拒绝
+          if (!connectionEstablished) {
+            // 如果当前状态不是错误，才触发错误事件
+            // 这样可以避免重复触发错误事件
+            if (status.value != SocketClientStatus.error) {
+              _handleError('连接被服务器关闭，可能是您的 IP 地址已被禁止');
+            } else {
+              // 如果已经处于错误状态，只更新状态而不触发新的错误事件
+              errorMessage = '连接被服务器关闭，可能是您的 IP 地址已被禁止';
+  ;
+              _channel = null;
+              currentServer = null;
+            }
+          } else {
+            _handleDisconnect();
+          }
         },
         onError: (error) {
-          _handleError(error.toString());
+          // 如果当前状态不是错误，才触发错误事件
+          if (status.value != SocketClientStatus.error) {
+            _handleError(error.toString());
+          }
         },
       );
 
-      // 先更新状态为已连接，这样认证请求才能发送
-      status.value = SocketClientStatus.connected;
+      // 等待连接建立
+      await connectionFuture;
 
-      // 等待一下，确保连接已经完全建立
-      await Future.delayed(const Duration(milliseconds: 500));
+      // 更新状态为已连接，这样认证请求才能发送
+      status.value = SocketClientStatus.connected;
 
       // 如果有密码，发送密码；如果没有，发送空密码
       if (server.password != null && server.password!.isNotEmpty) {
@@ -271,12 +325,8 @@ class SocketClient {
 
       return true;
     } catch (e) {
-      errorMessage = e.toString();
-      status.value = SocketClientStatus.error;
-      _eventController.add(SocketClientEvent(
-        type: SocketClientEventType.error,
-        errorMessage: e.toString(),
-      ));
+      // 使用_handleError方法处理错误，避免重复触发错误事件
+      _handleError(e.toString());
       return false;
     }
   }
@@ -388,8 +438,12 @@ class SocketClient {
 
   /// 处理断开连接
   void _handleDisconnect() {
+    // 如果当前状态是错误，不要覆盖错误状态
+    if (status.value != SocketClientStatus.error) {
+      status.value = SocketClientStatus.disconnected;
+    }
+
     _channel = null;
-    status.value = SocketClientStatus.disconnected;
     currentServer = null;
 
     _eventController.add(SocketClientEvent(
@@ -399,6 +453,11 @@ class SocketClient {
 
   /// 处理错误
   void _handleError(String error) {
+    // 如果错误消息相同，不重复触发错误事件
+    if (errorMessage == error) {
+      return;
+    }
+
     errorMessage = error;
     status.value = SocketClientStatus.error;
 

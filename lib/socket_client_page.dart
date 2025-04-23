@@ -81,10 +81,19 @@ class _SocketClientPageState extends State<SocketClientPage> {
         // 当发生错误时，刷新UI
         if (mounted) {
           setState(() {});
-          _showSnackBar(event.errorMessage ?? '发生错误', color: Colors.red);
+          // 避免重复显示错误信息
+          // 不在这里显示错误信息，因为在连接方法中已经显示了
+          // 只在连接过程中没有显示错误信息的情况下才显示
+          final errorMsg = event.errorMessage ?? '发生错误';
+          _showSnackBar(errorMsg, color: Colors.red);
         }
       } else if (event.type == SocketClientEventType.disconnected) {
         // 当断开连接时，刷新UI
+        if (mounted) {
+          setState(() {});
+        }
+      } else if (event.type == SocketClientEventType.connected) {
+        // 当连接成功时，刷新UI
         if (mounted) {
           setState(() {});
         }
@@ -535,7 +544,7 @@ class _SocketClientPageState extends State<SocketClientPage> {
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      '${server.host}:${server.port}${server.password != null ? ' (需要密码)' : ''}',
+                                      '${server.host}:${server.port}',
                                       style: TextStyle(
                                         color: Colors.grey[600],
                                         fontSize: 14,
@@ -643,31 +652,50 @@ class _SocketClientPageState extends State<SocketClientPage> {
                                               });
 
                                               // 异步连接，不会阻塞UI
-                                              final success =
-                                                  await _socketClient
-                                                      .connect(
-                                                          server);
+                                              try {
+                                                // 不需要使用单一变量跟踪是否已经显示错误信息
+                                                // 因为我们已经在事件监听器中禁用了错误消息显示
 
-                                              if (success) {
-                                                // 连接成功，完成连接过程
-                                                await _socketClient
-                                                    .completeConnection();
+                                                final success =
+                                                    await _socketClient
+                                                        .connect(
+                                                            server);
 
-                                                if (mounted) {
+                                                if (success) {
+                                                  // 连接成功，完成连接过程
+                                                  try {
+                                                    final completeSuccess = await _socketClient
+                                                        .completeConnection();
+
+                                                    if (completeSuccess && mounted) {
+                                                      _showSnackBar('连接成功');
+                                                      // 强制刷新UI，确保连接状态显示正确
+                                                      setState(() {});
+                                                    }
+                                                  } catch (e) {
+                                                    // 完成连接过程失败
+                                                    if (mounted) {
+                                                      _showSnackBar(
+                                                          '连接失败: ${e.toString()}',
+                                                          color: Colors.red);
+                                                      setState(() {});
+                                                    }
+                                                  }
+                                                } else if (mounted) {
+                                                  // 初始连接失败
                                                   _showSnackBar(
-                                                      '连接成功');
-                                                  // 强制刷新UI，确保连接状态显示正确
+                                                      '连接失败: ${_socketClient.errorMessage ?? "未知错误"}',
+                                                      color: Colors.red);
                                                   setState(() {});
                                                 }
-                                              } else if (mounted) {
-                                                // 连接失败
-                                                _showSnackBar(
-                                                    '连接失败: ${_socketClient.errorMessage ?? "未知错误"}',
-                                                    color: Colors
-                                                        .red);
-
-                                                // 强制刷新UI，确保按钮状态更新
-                                                setState(() {});
+                                              } catch (e) {
+                                                // 捕获所有异常，确保 UI 不会卡死
+                                                if (mounted) {
+                                                  _showSnackBar(
+                                                      '连接过程发生错误: ${e.toString()}',
+                                                      color: Colors.red);
+                                                  setState(() {});
+                                                }
                                               }
                                             },
                                   style: ElevatedButton.styleFrom(

@@ -16,6 +16,10 @@ enum SocketEventType {
   auth,  // 认证
   fetch, // 获取编辑器内容
   push,  // 推送内容到编辑器
+  clientConnected,    // 客户端连接
+  clientDisconnected, // 客户端断开
+  clientBanned,       // 客户端被禁止
+  blacklistChanged,   // 黑名单变化
 }
 
 /// Socket事件数据结构
@@ -53,6 +57,12 @@ class SocketService {
 
   // 已认证的客户端
   final Set<WebSocket> _authenticatedClients = {};
+
+  // 临时黑名单（本次启动期间被禁止的客户端IP地址）
+  final Set<String> _blacklistedIPs = {};
+
+  // 客户端IP地址映射
+  final Map<WebSocket, String> _clientIPs = {};
 
   // 事件流控制器
   final StreamController<SocketEvent> _eventController =
@@ -123,12 +133,17 @@ class SocketService {
 
   /// 停止Socket服务器
   Future<void> stopServer() async {
+    // 清空黑名单
+    _blacklistedIPs.clear();
+
     if (_server != null) {
       // 关闭所有客户端连接
       for (var client in _clients) {
         await client.close();
       }
       _clients.clear();
+      _clientIPs.clear();
+      _authenticatedClients.clear();
 
       // 关闭服务器
       await _server!.close();
@@ -142,8 +157,31 @@ class SocketService {
   /// 处理WebSocket请求
   void _handleWebSocketRequest(HttpRequest request) async {
     try {
+      // 获取客户端IP地址
+      final clientIP = request.connectionInfo?.remoteAddress.address;
+
+      // 检查是否在黑名单中
+      if (clientIP != null && _blacklistedIPs.contains(clientIP)) {
+        // 如果在黑名单中，关闭连接
+        request.response.statusCode = 403; // Forbidden
+        await request.response.close();
+        return;
+      }
+
       final socket = await WebSocketTransformer.upgrade(request);
       _clients.add(socket);
+
+      // 存储客户端IP地址
+      if (clientIP != null) {
+        _clientIPs[socket] = clientIP;
+      }
+
+      // 触发客户端连接事件
+      _eventController.add(SocketEvent(
+        type: SocketEventType.clientConnected,
+        content: clientIP,
+        socket: socket,
+      ));
 
       // 监听消息
       socket.listen(
@@ -151,12 +189,30 @@ class SocketService {
           _handleMessage(message, socket);
         },
         onDone: () {
+          final ip = _clientIPs[socket];
           _clients.remove(socket);
           _authenticatedClients.remove(socket);
+          _clientIPs.remove(socket);
+
+          // 触发客户端断开事件
+          _eventController.add(SocketEvent(
+            type: SocketEventType.clientDisconnected,
+            content: ip,
+            socket: socket,
+          ));
         },
         onError: (error) {
+          final ip = _clientIPs[socket];
           _clients.remove(socket);
           _authenticatedClients.remove(socket);
+          _clientIPs.remove(socket);
+
+          // 触发客户端断开事件
+          _eventController.add(SocketEvent(
+            type: SocketEventType.clientDisconnected,
+            content: ip,
+            socket: socket,
+          ));
         },
       );
     } catch (e) {
@@ -305,4 +361,105 @@ class SocketService {
     stopServer();
     _eventController.close();
   }
+
+  /// 获取已连接的客户端信息
+  List<Map<String, dynamic>> getConnectedClients() {
+    List<Map<String, dynamic>> clientsInfo = [];
+
+    for (var socket in _clients) {
+      final ip = _clientIPs[socket] ?? '未知IP';
+      final authenticated = _authenticatedClients.contains(socket);
+
+      clientsInfo.add({
+        'socket': socket,
+        'ip': ip,
+        'authenticated': authenticated,
+      });
+    }
+
+    return clientsInfo;
+  }
+
+  /// 断开特定客户端连接
+  Future<bool> disconnectClient(WebSocket socket) async {
+    try {
+      if (_clients.contains(socket)) {
+        await socket.close();
+        _clients.remove(socket);
+        _authenticatedClients.remove(socket);
+        _clientIPs.remove(socket);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('Error disconnecting client: $e');
+      return false;
+    }
+  }
+
+  /// 禁止客户端（断开连接并加入黑名单）
+  Future<bool> banClient(WebSocket socket) async {
+    try {
+      final ip = _clientIPs[socket];
+      if (ip != null) {
+        await disconnectClient(socket);
+        _blacklistedIPs.add(ip);
+
+        // 触发客户端被禁止事件
+        _eventController.add(SocketEvent(
+          type: SocketEventType.clientBanned,
+          content: ip,
+          socket: socket,
+        ));
+
+        // 触发黑名单变化事件
+        _eventController.add(SocketEvent(
+          type: SocketEventType.blacklistChanged,
+          content: null,
+          socket: socket,
+        ));
+
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('Error banning client: $e');
+      return false;
+    }
+  }
+
+  /// 获取已禁止的客户端列表
+  List<String> getBannedIPs() {
+    return _blacklistedIPs.toList();
+  }
+
+  /// 清空黑名单
+  void clearBlacklist() {
+    _blacklistedIPs.clear();
+  }
+
+  /// 从黑名单中移除指定IP地址
+  bool removeFromBlacklist(String ip) {
+    final result = _blacklistedIPs.remove(ip);
+    if (result) {
+      // 触发黑名单变化事件
+      // 使用已存在的客户端或创建一个虚拟的客户端
+      WebSocket? dummySocket;
+      if (_clients.isNotEmpty) {
+        dummySocket = _clients.first;
+      } else {
+        // 如果没有客户端，不触发事件
+        return result;
+      }
+
+      _eventController.add(SocketEvent(
+        type: SocketEventType.blacklistChanged,
+        content: ip,
+        socket: dummySocket,
+      ));
+    }
+    return result;
+  }
+
+
 }
