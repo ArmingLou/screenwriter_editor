@@ -330,16 +330,16 @@ class SocketClient {
   /// 断开连接
   Future<void> disconnect() async {
     if (_channel != null) {
-      await _channel!.sink.close();
-      _channel = null;
+      await _channel!.sink.close(); // 会在在 _channel!.stream 的 onDone 回调中处理
+      // _channel = null;
     }
 
-    status.value = SocketClientStatus.disconnected;
-    currentServer = null;
+    // status.value = SocketClientStatus.disconnected;
+    // currentServer = null;
 
-    _eventController.add(SocketClientEvent(
-      type: SocketClientEventType.disconnected,
-    ));
+    // _eventController.add(SocketClientEvent(
+    //   type: SocketClientEventType.disconnected,
+    // ));
   }
 
   /// 发送认证请求

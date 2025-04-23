@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'socket_service.dart';
@@ -18,6 +19,9 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
   bool _autoStart = false; // 是否在应用启动时自动启动服务器
   bool _passwordEnabled = false; // 是否启用密码验证
   bool _useFullScroll = false; // 是否使用整体滚动布局
+
+  // 服务器事件订阅
+  late StreamSubscription<SocketEvent> _socketEventSubscription;
 
   // 创建焦点节点来管理输入框的焦点
   final FocusNode _portFocusNode = FocusNode();
@@ -42,6 +46,9 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _determineLayoutMode();
     });
+
+    // 监听服务器事件
+    _socketEventSubscription = _socketService.events.listen(_handleSocketEvent);
 
     _loadSettings();
   }
@@ -544,12 +551,36 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
     );
   }
 
+  // 处理Socket事件
+  void _handleSocketEvent(SocketEvent event) {
+    if (event.type == SocketEventType.serverError && mounted) {
+      // 当服务器发生错误时，刷新页面显示
+      setState(() {
+        // 状态已经在SocketService中更新，这里只需要触发重建
+      });
+
+      // 显示错误提示
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('服务器异常停止: ${_socketService.errorMessage}'),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   void dispose() {
     // 移除屏幕方向变化监听
     if (_observer != null) {
       WidgetsBinding.instance.removeObserver(_observer!);
     }
+
+    // 取消服务器事件订阅
+    _socketEventSubscription.cancel();
 
     // 释放资源
     _portController.dispose();

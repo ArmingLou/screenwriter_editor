@@ -142,6 +142,12 @@ class _EditorScreenState extends State<EditorScreen> {
   // 服务端菜单状态更新函数，用于在客户端连接/断开时刷新菜单
   StateSetter? _socketServerMenuState;
 
+  // 客户端菜单上下文，用于在连接断开时关闭菜单
+  BuildContext? _socketClientMenuContext;
+
+  // 客户端菜单上下文，用于在连接断开时关闭菜单
+  BuildContext? _socketServMenuContext;
+
   // Statis? statisGlobal;
 
   int _lastSelection = -1;
@@ -853,6 +859,39 @@ class _EditorScreenState extends State<EditorScreen> {
             });
           }
           break;
+        case SocketEventType.serverError:
+          scheduleMicrotask(() {
+            if (mounted) {
+              final errorMsg = event.content ?? '服务器发生异常';
+              _showError('远程同步服务器异常停止: $errorMsg');
+            }
+          });
+          // 如果菜单正在显示，则关闭菜单
+          if (_socketServerMenuState != null) {
+            // 使用 scheduleMicrotask 确保在 UI 线程中执行
+            scheduleMicrotask(() {
+              if (_socketServMenuContext != null && mounted) {
+                try {
+                  // 关闭菜单
+                  Navigator.pop(_socketServMenuContext!);
+                  // 清除上下文引用
+                  _socketServMenuContext = null;
+                  _socketServerMenuState = null;
+                  debugPrint('服务器异常，已关闭菜单');
+                } catch (e) {
+                  // 如果出现异常，清空上下文引用
+                  debugPrint('关闭菜单异常: $e');
+                  _socketServMenuContext = null;
+                  _socketServerMenuState = null;
+                }
+              }
+            });
+          } else {
+            debugPrint('菜单上下文为空，无法关闭菜单');
+            // 确保清除状态更新函数
+            _socketServerMenuState = null;
+          }
+          break;
       }
     });
 
@@ -862,6 +901,27 @@ class _EditorScreenState extends State<EditorScreen> {
         if (event.content != null) {
           // 收到远程内容，替换到当前编辑器
           _replaceTextFromRemote(event.content!);
+        }
+      } else if (event.type == SocketClientEventType.disconnected) {
+        if (mounted) {
+          scheduleMicrotask(() {
+            _showInfo('远程同步连接已断开');
+          });
+        }
+        // 当连接断开时，如果菜单正在显示，则关闭菜单
+        if (_socketClientMenuContext != null && mounted) {
+          // 使用 scheduleMicrotask 确保在 UI 线程中执行
+          scheduleMicrotask(() {
+            try {
+              // 关闭菜单
+              Navigator.pop(_socketClientMenuContext!);
+              // 清除上下文引用
+              _socketClientMenuContext = null;
+            } catch (e) {
+              // 如果出现异常，清空上下文引用
+              _socketClientMenuContext = null;
+            }
+          });
         }
       }
     });
@@ -884,6 +944,12 @@ class _EditorScreenState extends State<EditorScreen> {
 
   // 显示Socket服务端操作菜单
   Future<void> _showSocketServerMenu(BuildContext context) async {
+    // 检查服务器状态，如果不是运行状态，则不显示菜单
+    if (_socketService.status.value != SocketServiceStatus.running) {
+      _showError('远程同步服务器未运行');
+      return;
+    }
+
     // 获取可用的IP地址
     final ipAddresses = _socketService.getLocalIpAddresses();
     final port = _socketService.currentPort;
@@ -900,10 +966,12 @@ class _EditorScreenState extends State<EditorScreen> {
       final hasPassword = password.isNotEmpty;
 
       if (mounted) {
+        // 保存当前上下文以便安全地关闭菜单
+        _socketServMenuContext = context;
+
         // 显示菜单
-        final BuildContext currentContext = context;
         await showModalBottomSheet(
-            context: currentContext,
+            context: context,
             isScrollControlled: true, // 允许内容滚动
             builder: (context) => StatefulBuilder(
                     builder: (BuildContext context, StateSetter setState) {
@@ -1173,16 +1241,21 @@ class _EditorScreenState extends State<EditorScreen> {
                   );
                 }));
       }
+    }).then((_) {
+      // 菜单关闭后，清除上下文引用
+      _socketServMenuContext = null;
+      // 菜单关闭后，清除状态更新函数和取消订阅
+      _socketServerMenuState = null;
     });
-
-    // 菜单关闭后，清除状态更新函数
-    _socketServerMenuState = null;
   }
 
   // 显示Socket客户端操作菜单
   void _showSocketClientMenu(BuildContext context) {
     final socketClient = SocketClient();
     final server = socketClient.currentServer;
+
+    // 保存菜单上下文，用于在连接断开时关闭菜单
+    _socketClientMenuContext = context;
 
     showModalBottomSheet(
       context: context,
@@ -1233,7 +1306,10 @@ class _EditorScreenState extends State<EditorScreen> {
           ],
         ),
       ),
-    );
+    ).then((_) {
+      // 菜单关闭后，清除上下文引用
+      _socketClientMenuContext = null;
+    });
   }
 
   @override

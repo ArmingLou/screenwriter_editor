@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 /// 定义Socket服务的状态
 enum SocketServiceStatus {
@@ -20,30 +20,43 @@ enum SocketEventType {
   clientDisconnected, // 客户端断开
   clientBanned, // 客户端被禁止
   blacklistChanged, // 黑名单变化
+  serverError, // 服务器异常
 }
 
 /// Socket事件数据结构
 class SocketEvent {
   final SocketEventType type;
   final String? content;
-  final WebSocket socket;
+  final WebSocket? socket;
 
   SocketEvent({
     required this.type,
     this.content,
-    required this.socket,
+    this.socket,
   });
 }
 
 /// Socket服务类
-class SocketService {
+class SocketService with WidgetsBindingObserver {
   // 单例模式
   static final SocketService _instance = SocketService._internal();
   factory SocketService() => _instance;
-  SocketService._internal();
+  SocketService._internal() {
+    // 注册应用生命周期监听
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   // 服务器实例
   HttpServer? _server;
+
+  // 服务器异常监听器
+  StreamSubscription? _serverErrorSubscription;
+
+  // 应用是否在前台
+  bool _isAppInForeground = true;
+
+  // 最后一次进入后台的时间
+  DateTime? _lastBackgroundTime;
 
   // 状态
   ValueNotifier<SocketServiceStatus> status =
@@ -110,17 +123,47 @@ class SocketService {
 
     try {
       // 创建HTTP服务器
-      _server = await HttpServer.bind(InternetAddress.anyIPv4, port);
+      // 使用 shared=true 允许在同一个地址和端口组合上多次绑定
+      _server =
+          await HttpServer.bind(InternetAddress.anyIPv4, port, shared: true);
       currentPort = port;
 
       // 监听连接
-      _server!.listen((HttpRequest request) {
-        if (WebSocketTransformer.isUpgradeRequest(request)) {
-          _handleWebSocketRequest(request);
-        } else {
-          _handleHttpRequest(request);
-        }
-      });
+      _server!.listen(
+        (HttpRequest request) {
+          if (WebSocketTransformer.isUpgradeRequest(request)) {
+            _handleWebSocketRequest(request);
+          } else {
+            _handleHttpRequest(request);
+          }
+        },
+        onError: (error, stackTrace) {
+          // 将错误传递给错误处理函数
+          _handleServerError(error);
+        },
+        onDone: () {
+          // 服务器完成时调用关闭处理
+          _handleServerClosed();
+        },
+      );
+
+      // 添加定期检查服务器状态
+      _serverErrorSubscription =
+          Stream.periodic(const Duration(seconds: 5)).listen(
+        (_) async {
+          // 如果应用在前台，执行定期检查
+          if (_isAppInForeground &&
+              status.value == SocketServiceStatus.running) {
+            // 使用强制检查方法
+            await _forceCheckServerStatus();
+          }
+        },
+        onError: (error, stackTrace) {
+          // 定期检查流发生错误
+          debugPrint('Periodic check error: $error');
+          // 不需要处理，因为这只是定期检查的错误，不影响服务器本身
+        },
+      );
 
       status.value = SocketServiceStatus.running;
       return true;
@@ -135,6 +178,10 @@ class SocketService {
   Future<void> stopServer() async {
     // 清空黑名单
     _blacklistedIPs.clear();
+
+    // 取消服务器错误监听
+    await _serverErrorSubscription?.cancel();
+    _serverErrorSubscription = null;
 
     if (_server != null) {
       // 关闭所有客户端连接
@@ -201,7 +248,7 @@ class SocketService {
             socket: socket,
           ));
         },
-        onError: (error) {
+        onError: (error, stackTrace) {
           final ip = _clientIPs[socket];
           _clients.remove(socket);
           _authenticatedClients.remove(socket);
@@ -213,6 +260,9 @@ class SocketService {
             content: ip,
             socket: socket,
           ));
+
+          // 记录错误
+          debugPrint('WebSocket error: $error');
         },
       );
     } catch (e) {
@@ -329,7 +379,12 @@ class SocketService {
   }
 
   /// 发送编辑器内容到客户端
-  void sendContent(String content, WebSocket socket) {
+  void sendContent(String content, WebSocket? socket) {
+    if (socket == null) {
+      debugPrint('无法发送内容，socket 为 null');
+      return;
+    }
+
     final response = jsonEncode({
       'type': 'content',
       'content': content,
@@ -367,8 +422,134 @@ class SocketService {
     return addresses;
   }
 
+  /// 处理服务器错误
+  void _handleServerError(dynamic error) async {
+    if (status.value == SocketServiceStatus.error &&
+        status.value == SocketServiceStatus.stopped) {
+      return;
+    }
+    debugPrint('Server error: $error');
+
+    // 设置错误信息
+    errorMessage = error.toString();
+
+    // 如果有客户端连接，创建一个虚拟的WebSocket用于事件通知
+    WebSocket? dummySocket;
+    if (_clients.isNotEmpty) {
+      dummySocket = _clients.first;
+    }
+
+    // 发送服务器错误事件，即使没有客户端也发送
+    _eventController.add(SocketEvent(
+      type: SocketEventType.serverError,
+      content: errorMessage,
+      socket: dummySocket,
+    ));
+
+    // 停止服务器
+    await stopServer();
+
+    // 更新状态
+    status.value = SocketServiceStatus.error;
+  }
+
+  /// 处理服务器关闭
+  void _handleServerClosed() {
+    // 如果当前状态不是错误或已停止，则认为是异常关闭
+    if (status.value != SocketServiceStatus.error &&
+        status.value != SocketServiceStatus.stopped) {
+      errorMessage = '服务器意外关闭';
+      _handleServerError(errorMessage!);
+    }
+  }
+
+  /// 应用生命周期变化回调
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        // 应用恢复到前台
+        _isAppInForeground = true;
+        final now = DateTime.now();
+        debugPrint('App resumed to foreground at ${now.toIso8601String()}');
+
+        // 检查应用在后台运行的时间
+        if (_lastBackgroundTime != null &&
+            status.value == SocketServiceStatus.running) {
+          final difference =
+              now.difference(_lastBackgroundTime!).inMilliseconds;
+
+          // 如果应用在后台运行时间超过限制，自动检查服务器状态
+          debugPrint('App was in background for $difference ms');
+
+          // 无论后台运行时间多长，都强制检查服务器状态
+          // 因为 iOS 在后台可能会暂停定时器，导致服务器状态检测失效
+          _forceCheckServerStatus();
+        }
+        break;
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.paused:
+        // 应用进入后台
+        _isAppInForeground = false;
+        _lastBackgroundTime = DateTime.now();
+        debugPrint(
+            'App went to background at ${_lastBackgroundTime!.toIso8601String()}');
+        break;
+      case AppLifecycleState.detached:
+        // 应用完全分离，可能被系统终止
+        _isAppInForeground = false;
+        debugPrint('App detached');
+        break;
+      default:
+        break;
+    }
+  }
+
+  /// 强制检查服务器状态，特别用于从后台恢复时
+  Future<void> _forceCheckServerStatus() async {
+    // 如果服务器实例为空，触发关闭事件
+    if (_server == null) {
+      _handleServerClosed();
+      return;
+    }
+
+    // 获取当前端口
+    int? port;
+    try {
+      port = _server!.port;
+    } catch (e) {
+      // 无法获取端口，服务器可能已关闭
+      debugPrint('Cannot get server port: $e');
+      _handleServerError('无法获取服务器端口，服务器可能已关闭');
+      return;
+    }
+
+    // 尝试连接到服务器
+    bool canConnect = false;
+    try {
+      // 使用超短的超时时间，快速检测服务器是否响应
+      final socket = await Socket.connect('127.0.0.1', port,
+          timeout: const Duration(milliseconds: 200));
+      await socket.close();
+      canConnect = true;
+      debugPrint('Successfully connected to server on port $port');
+    } catch (e) {
+      // 无法连接到服务器，尝试创建一个新的服务器实例
+      debugPrint('Cannot connect to server: $e');
+    }
+
+    // 如果无法连接，则认为服务器已停止
+    if (!canConnect) {
+      debugPrint('Cannot connect to server, considering it stopped');
+      _handleServerError('服务器已停止监听，无法接受连接');
+    }
+  }
+
   /// 释放资源
   void dispose() {
+    // 移除应用生命周期监听
+    WidgetsBinding.instance.removeObserver(this);
+
     stopServer();
     _eventController.close();
   }
@@ -454,14 +635,8 @@ class SocketService {
     final result = _blacklistedIPs.remove(ip);
     if (result) {
       // 触发黑名单变化事件
-      // 使用已存在的客户端或创建一个虚拟的客户端
-      WebSocket? dummySocket;
-      if (_clients.isNotEmpty) {
-        dummySocket = _clients.first;
-      } else {
-        // 如果没有客户端，不触发事件
-        return result;
-      }
+      // 使用已存在的客户端或传递 null
+      WebSocket? dummySocket = _clients.isNotEmpty ? _clients.first : null;
 
       _eventController.add(SocketEvent(
         type: SocketEventType.blacklistChanged,
