@@ -19,7 +19,7 @@ class StatsPage extends StatelessWidget {
       ..sort((a, b) => b.value.compareTo(a.value));
 
     //sorted map to _data
-    final _data = sorted.map((entry) {
+    final data0 = sorted.map((entry) {
       return Series(
         data: {entry.key: entry.value},
         colorAccessor: (domain, value) =>
@@ -46,7 +46,7 @@ class StatsPage extends StatelessWidget {
       );
     }).toList();
     // height:
-    final h = 25 * _data.length.toDouble() + 25;
+    final h = 25 * data0.length.toDouble() + 25;
 
     return Card(
       child: Padding(
@@ -58,7 +58,7 @@ class StatsPage extends StatelessWidget {
             SizedBox(
               height: h,
               child: BarChart(
-                data: _data,
+                data: data0,
                 // measureFormatter: number.format,
                 valueAxis: Axis.horizontal,
                 // inverted: true,
@@ -120,31 +120,49 @@ class StatsPage extends StatelessWidget {
     return Color((hash & 0xFFFFFF) + 0xFF000000);
   }
 
-  Widget _buildStackChart(Map<String, Map<String, int>> data, String title,
-      bool charsTime, BuildContext context) {
-    Map<String, Color> _colors = {};
+  Widget _buildStackChart(Map<String, Map<String, Map<String, int>>> data,
+      String title, bool charsTime, BuildContext context) {
+    Map<String, Color> colors = {};
 
     // final number = NumberFormat.compact(locale: 'ru');
-    final sorted = data.entries.toList()
+    final sorted0 = data.entries.toList()
       ..sort((a, b) {
-        int aSum = a.value.values.reduce((a, b) => a + b);
-        int bSum = b.value.values.reduce((a, b) => a + b);
+        // sum the values of the inner map
+        int aSum = a.value.values
+            .fold(0, (sum, e) => sum + e.values.fold(0, (sum, e) => sum + e));
+        int bSum = b.value.values
+            .fold(0, (sum, e) => sum + e.values.fold(0, (sum, e) => sum + e));
         return bSum.compareTo(aSum);
       });
 
+    final List<MapEntry<String, Map<String, int>>> sorted = [];
+
+    for (var entry in sorted0) {
+      final sorted1 = entry.value.entries.toList()
+        ..sort((a, b) {
+          int aSum = a.value.values.reduce((a, b) => a + b);
+          int bSum = b.value.values.reduce((a, b) => a + b);
+          return bSum.compareTo(aSum);
+        });
+      for (var e in sorted1) {
+        final newEntry = MapEntry('${entry.key} (${e.key})', e.value);
+        sorted.add(newEntry);
+      }
+    }
+
     //sorted map to _data
-    final List<Series<String, int>> _data = [];
-    sorted.forEach((entry) {
+    final List<Series<String, int>> data0 = [];
+    for (var entry in sorted) {
       // sort the inner map by value
       final innerSorted = entry.value.entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
       // create a new map with sorted keys
       var ls = innerSorted.map((e) {
-        _colors[e.key] = getColor(e.key);
+        colors[e.key] = getColor(e.key);
         return Series(
           data: {entry.key: e.value},
           // colorAccessor: (domain, value) => Colors.blue,
-          colorAccessor: (domain, value) => _colors[e.key]!,
+          colorAccessor: (domain, value) => colors[e.key]!,
           measureAccessor: (value) => value.toDouble(),
           labelAccessor: (domain, value, percent) {
             var lb = value.toString();
@@ -167,8 +185,8 @@ class StatsPage extends StatelessWidget {
           },
         );
       }).toList();
-      _data.addAll(ls);
-    });
+      data0.addAll(ls);
+    }
     // height:
     final h = 25 * sorted.length.toDouble() + 25;
 
@@ -183,7 +201,7 @@ class StatsPage extends StatelessWidget {
             Wrap(
               alignment: WrapAlignment.start,
               crossAxisAlignment: WrapCrossAlignment.start,
-              children: _colors.entries.map((e) {
+              children: colors.entries.map((e) {
                 return Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -203,7 +221,7 @@ class StatsPage extends StatelessWidget {
             SizedBox(
               height: h,
               child: StackedBarChart(
-                data: _data,
+                data: data0,
                 // measureFormatter: number.format,
                 valueAxis: Axis.horizontal,
                 // inverted: true,
