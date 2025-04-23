@@ -657,13 +657,8 @@ class _SocketClientPageState extends State<SocketClientPage> {
                                                       setState(() {});
                                                     }
                                                   }
-                                                } else if (mounted) {
-                                                  // 初始连接失败
-                                                  _showSnackBar(
-                                                      '连接失败: ${_socketClient.errorMessage ?? "未知错误"}',
-                                                      color: Colors.red);
-                                                  setState(() {});
                                                 }
+                                                // 不成功会 发送事件 SocketClientEventType.error 。已经在事件处理中 弹窗。
                                               } catch (e) {
                                                 // 捕获所有异常，确保 UI 不会卡死
                                                 if (mounted) {

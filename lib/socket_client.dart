@@ -15,11 +15,11 @@ enum SocketClientStatus {
 
 /// 定义Socket客户端的事件类型
 enum SocketClientEventType {
-  connected,  // 连接成功
+  connected, // 连接成功
   disconnected, // 断开连接
-  content,    // 接收到内容
-  error,      // 发生错误
-  auth,       // 认证相关
+  content, // 接收到内容
+  error, // 发生错误
+  auth, // 认证相关
 }
 
 /// Socket客户端事件数据结构
@@ -137,9 +137,8 @@ class SocketClient {
 
       // 保存到SharedPreferences
       final prefs = await SharedPreferences.getInstance();
-      final serversJson = _savedServers
-          .map((server) => jsonEncode(server.toJson()))
-          .toList();
+      final serversJson =
+          _savedServers.map((server) => jsonEncode(server.toJson())).toList();
 
       await prefs.setStringList('socket_client_servers', serversJson);
       return true;
@@ -162,9 +161,8 @@ class SocketClient {
 
       // 保存到SharedPreferences
       final prefs = await SharedPreferences.getInstance();
-      final serversJson = _savedServers
-          .map((server) => jsonEncode(server.toJson()))
-          .toList();
+      final serversJson =
+          _savedServers.map((server) => jsonEncode(server.toJson())).toList();
 
       await prefs.setStringList('socket_client_servers', serversJson);
       return true;
@@ -213,7 +211,8 @@ class SocketClient {
       // 尝试连接，但不实际建立连接，只是检查是否可达
       // 实际连接将在主线程中创建
       final uri = Uri.parse(wsUrl);
-      final socket = await Socket.connect(uri.host, uri.port, timeout: const Duration(seconds: 5));
+      final socket = await Socket.connect(uri.host, uri.port,
+          timeout: const Duration(seconds: 5));
       await socket.close();
 
       return true;
@@ -224,7 +223,8 @@ class SocketClient {
 
   /// 完成连接过程（在主线程中调用）
   Future<bool> completeConnection() async {
-    if (status.value != SocketClientStatus.connecting || currentServer == null) {
+    if (status.value != SocketClientStatus.connecting ||
+        currentServer == null) {
       return false;
     }
 
@@ -237,14 +237,16 @@ class SocketClient {
       final httpClient = HttpClient();
       httpClient.connectionTimeout = const Duration(seconds: 5);
 
+      var forb = false;
       try {
         // 先发送 HTTP 请求检查服务器状态
-        final request = await httpClient.getUrl(Uri.parse('http://${server.host}:${server.port}'));
+        final request = await httpClient
+            .getUrl(Uri.parse('http://${server.host}:${server.port}'));
         final response = await request.close();
 
         // 如果返回 403，表示客户端被禁止
         if (response.statusCode == 403) {
-          throw Exception('连接被服务器拒绝：您的 IP 地址已被禁止');
+          forb = true;
         }
 
         // 关闭响应流
@@ -252,12 +254,17 @@ class SocketClient {
       } catch (e) {
         // 如果是 403 错误，直接抛出
         if (e.toString().contains('403')) {
-          throw Exception('连接被服务器拒绝：您的 IP 地址已被禁止');
+          forb = true;
         }
         // 其他 HTTP 错误可以忽略，因为服务器可能不支持 HTTP 请求
         // 继续尝试 WebSocket 连接
       } finally {
         httpClient.close();
+      }
+
+      // 如果返回 403，表示客户端被禁止
+      if (forb) {
+        throw Exception('连接被服务器拒绝：您的 IP 地址已被禁止');
       }
 
       // 创建WebSocket连接
@@ -281,26 +288,14 @@ class SocketClient {
           _handleMessage(message);
         },
         onDone: () {
-          // 如果连接还没建立就断开，可能是被服务器拒绝
-          if (!connectionEstablished) {
-            // 如果当前状态不是错误，才触发错误事件
-            // 这样可以避免重复触发错误事件
-            if (status.value != SocketClientStatus.error) {
-              _handleError('连接被服务器关闭，可能是您的 IP 地址已被禁止');
-            } else {
-              // 如果已经处于错误状态，只更新状态而不触发新的错误事件
-              errorMessage = '连接被服务器关闭，可能是您的 IP 地址已被禁止';
-  ;
-              _channel = null;
-              currentServer = null;
-            }
-          } else {
+          if (connectionEstablished) {
             _handleDisconnect();
           }
+          // onError 回调后 onDone 还会回调一次。
         },
         onError: (error) {
-          // 如果当前状态不是错误，才触发错误事件
-          if (status.value != SocketClientStatus.error) {
+          // 如果当前已经建立连接，才触发错误事件。 否则是 _channel!.ready 的重复错误回调，已经在 下面 try catch 处理过一次_channel!.ready. 的错误回调了，这里不重复处理
+          if (connectionEstablished) {
             _handleError(error.toString());
           }
         },

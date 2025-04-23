@@ -13,13 +13,13 @@ enum SocketServiceStatus {
 
 /// 定义Socket服务的事件类型
 enum SocketEventType {
-  auth,  // 认证
+  auth, // 认证
   fetch, // 获取编辑器内容
-  push,  // 推送内容到编辑器
-  clientConnected,    // 客户端连接
+  push, // 推送内容到编辑器
+  clientConnected, // 客户端连接
   clientDisconnected, // 客户端断开
-  clientBanned,       // 客户端被禁止
-  blacklistChanged,   // 黑名单变化
+  clientBanned, // 客户端被禁止
+  blacklistChanged, // 黑名单变化
 }
 
 /// Socket事件数据结构
@@ -222,6 +222,16 @@ class SocketService {
 
   /// 处理HTTP请求（提供简单的状态页面）
   void _handleHttpRequest(HttpRequest request) {
+    // 检查是否在黑名单中
+    // 获取客户端IP地址
+    final clientIP = request.connectionInfo?.remoteAddress.address;
+    if (clientIP != null && _blacklistedIPs.contains(clientIP)) {
+      // 如果在黑名单中，关闭连接
+      request.response.statusCode = 403; // Forbidden
+      request.response.close();
+      return;
+    }
+
     final port = currentPort;
     final clientCount = _clients.length;
     final address = request.connectionInfo?.remoteAddress.address;
@@ -264,7 +274,8 @@ class SocketService {
         // 处理认证请求
         if (type == 'auth') {
           final String password = data['password'] ?? '';
-          final bool authenticated = !_passwordRequired || password == _password;
+          final bool authenticated =
+              !_passwordRequired || password == _password;
 
           if (authenticated) {
             _authenticatedClients.add(socket);
@@ -460,6 +471,4 @@ class SocketService {
     }
     return result;
   }
-
-
 }
