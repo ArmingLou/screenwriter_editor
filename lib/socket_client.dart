@@ -447,7 +447,7 @@ class SocketClient {
     ));
   }
 
-  /// 处理错误
+  /// 处理错误， 不一定是连接错误，不一定断开当前连接
   void _handleError(String error) {
     // 如果错误消息相同，不重复触发错误事件
     if (errorMessage == error) {

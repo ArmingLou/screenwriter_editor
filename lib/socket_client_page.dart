@@ -82,11 +82,8 @@ class _SocketClientPageState extends State<SocketClientPage> {
         // 当发生错误时，刷新UI
         if (mounted) {
           setState(() {});
-          // 避免重复显示错误信息
-          // 不在这里显示错误信息，因为在连接方法中已经显示了
-          // 只在连接过程中没有显示错误信息的情况下才显示
-          final errorMsg = event.errorMessage ?? '发生错误';
-          _showSnackBar(errorMsg, color: Colors.red);
+          // final errorMsg = event.errorMessage ?? '发生错误';
+          // _showSnackBar(errorMsg, color: Colors.red);
         }
       } else if (event.type == SocketClientEventType.disconnected) {
         // 当断开连接时，刷新UI
@@ -416,7 +413,7 @@ class _SocketClientPageState extends State<SocketClientPage> {
                   ElevatedButton(
                     onPressed: () async {
                       await _socketClient.disconnect();
-                      _showSnackBar('已断开连接');
+                      // _showSnackBar('已断开连接');
                       // 强制刷新UI，确保所有按钮状态更新
                       setState(() {});
                     },
@@ -614,7 +611,7 @@ class _SocketClientPageState extends State<SocketClientPage> {
                                   onPressed: isConnected
                                       ? () async {
                                           await _socketClient.disconnect();
-                                          _showSnackBar('已断开连接');
+                                          // _showSnackBar('已断开连接');
                                           // 强制刷新UI，确保所有按钮状态更新
                                           setState(() {});
                                         }
@@ -644,7 +641,7 @@ class _SocketClientPageState extends State<SocketClientPage> {
 
                                                     if (completeSuccess &&
                                                         mounted) {
-                                                      _showSnackBar('连接成功');
+                                                      // _showSnackBar('连接成功');
                                                       // 强制刷新UI，确保连接状态显示正确
                                                       setState(() {});
                                                     }
@@ -692,7 +689,7 @@ class _SocketClientPageState extends State<SocketClientPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('远程同步客户端'),
+        title: const Text('远程同步 · 客户端'),
       ),
       // 设置 resizeToAvoidBottomInset 为 true，允许布局自动调整以适应键盘
       // 这样键盘弹出时底部按钮组会上升，中间可滚动部分会适应新的高度

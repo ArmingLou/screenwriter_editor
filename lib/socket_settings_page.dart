@@ -497,7 +497,7 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('远程同步服务端'),
+        title: const Text('远程同步 · 服务端'),
       ),
       // 设置 resizeToAvoidBottomInset 为 true，允许布局自动调整以适应键盘
       // 这样键盘弹出时底部按钮组会上升，中间可滚动部分会适应新的高度
@@ -560,15 +560,15 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
       });
 
       // 显示错误提示
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('服务器异常停止: ${_socketService.errorMessage}'),
-            duration: const Duration(seconds: 3),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      // if (mounted) {
+      //   ScaffoldMessenger.of(context).showSnackBar(
+      //     SnackBar(
+      //       content: Text('服务器异常停止: ${_socketService.errorMessage}'),
+      //       duration: const Duration(seconds: 3),
+      //       backgroundColor: Colors.red,
+      //     ),
+      //   );
+      // }
     }
   }
 

@@ -820,9 +820,9 @@ class _EditorScreenState extends State<EditorScreen> {
           // 处理认证事件
           final success = event.content == 'success';
           if (success) {
-            _showSuccess('远程客户端认证成功');
+            _showSuccess('接入客户端认证通过');
           } else {
-            _showError('远程客户端认证失败');
+            _showError('接入客户端认证拒绝');
           }
           break;
         case SocketEventType.fetch:
@@ -863,7 +863,7 @@ class _EditorScreenState extends State<EditorScreen> {
           scheduleMicrotask(() {
             if (mounted) {
               final errorMsg = event.content ?? '服务器发生异常';
-              _showError('远程同步服务器异常停止: $errorMsg');
+              _showError('服务器异常停止: $errorMsg');
             }
           });
           // 如果菜单正在显示，则关闭菜单
@@ -923,6 +923,13 @@ class _EditorScreenState extends State<EditorScreen> {
             }
           });
         }
+      } else if (event.type == SocketClientEventType.error) {
+        if (mounted) {
+          scheduleMicrotask(() {
+            final errorMsg = event.errorMessage ?? '远程同步发生异常';
+            _showError(errorMsg);
+          });
+        }
       }
     });
 
@@ -937,7 +944,7 @@ class _EditorScreenState extends State<EditorScreen> {
       if (success) {
         final securityStatus =
             password != null && password.isNotEmpty ? '，已启用密码验证' : '';
-        _showSuccess('远程同步服务已自动启动，端口: $port$securityStatus');
+        _showSuccess('作为服务已自动启动，端口: $port$securityStatus');
       }
     }
   }
@@ -946,7 +953,7 @@ class _EditorScreenState extends State<EditorScreen> {
   Future<void> _showSocketServerMenu(BuildContext context) async {
     // 检查服务器状态，如果不是运行状态，则不显示菜单
     if (_socketService.status.value != SocketServiceStatus.running) {
-      _showError('远程同步服务器未运行');
+      _showError('服务器未运行');
       return;
     }
 
@@ -994,7 +1001,7 @@ class _EditorScreenState extends State<EditorScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           ListTile(
-                            title: const Text('远程同步服务器已启动'),
+                            title: const Text('作为服务器已启动'),
                             subtitle: Text('端口: $port'),
                             leading: const Icon(Icons.cloud_circle,
                                 color: Colors.green),
@@ -1230,7 +1237,7 @@ class _EditorScreenState extends State<EditorScreen> {
                               Future.microtask(() async {
                                 await _socketService.stopServer();
                                 if (mounted) {
-                                  _showInfo('远程同步服务器已停止');
+                                  _showInfo('服务器已停止');
                                 }
                               });
                             },
@@ -1287,7 +1294,7 @@ class _EditorScreenState extends State<EditorScreen> {
                 socketClient.pushContent(content);
                 Navigator.pop(context);
                 if (mounted) {
-                  _showInfo('内容已推送到远程服务器');
+                  _showInfo('内容已推送');
                 }
               },
             ),
@@ -1299,7 +1306,7 @@ class _EditorScreenState extends State<EditorScreen> {
                 socketClient.fetchContent();
                 Navigator.pop(context);
                 if (mounted) {
-                  _showInfo('正在从远程服务器获取内容...');
+                  _showInfo('正在拉取内容...');
                 }
               },
             ),
@@ -1830,7 +1837,7 @@ class _EditorScreenState extends State<EditorScreen> {
     int total = _quillController.document.length - 1;
     if (total < 0) total = 0;
     _charsLenNotifier.value = [_quillController.selection.baseOffset, total];
-    _showInfo('已从远程 接收并更新内容');
+    _showInfo('已从远程接收内容');
 
     // 触发格式更新
     Future.delayed(const Duration(milliseconds: 2), () {
