@@ -47,7 +47,8 @@ class _SocketClientPageState extends State<SocketClientPage> {
 
     // 计算可用高度，不考虑键盘高度
     // 因为我们已经设置了 resizeToAvoidBottomInset: true，允许布局自动调整以适应键盘
-    final availableHeight = screenHeight - _statusCardHeight - _bottomInfoHeight - 32; // 32是上下间距
+    final availableHeight =
+        screenHeight - _statusCardHeight - _bottomInfoHeight - 32; // 32是上下间距
 
     // 判断是否需要整体滚动，使用固定阈值
     final needsFullScroll = availableHeight < 200;
@@ -136,7 +137,7 @@ class _SocketClientPageState extends State<SocketClientPage> {
           for (var addr in interface.addresses) {
             allAddresses.add(addr.address);
 
-            if (addr.address.startsWith('192.168.')) {
+            if (addr.address.startsWith('192.')) {
               ip192Addresses.add(addr.address);
             } else if (addr.address.startsWith('10.') ||
                 addr.address.startsWith('172.')) {
@@ -152,7 +153,7 @@ class _SocketClientPageState extends State<SocketClientPage> {
           for (var addr in interface.addresses) {
             allAddresses.add(addr.address);
 
-            if (addr.address.startsWith('192.168.')) {
+            if (addr.address.startsWith('192.')) {
               ip192Addresses.add(addr.address);
             } else if (addr.address.startsWith('10.') ||
                 addr.address.startsWith('172.')) {
@@ -207,7 +208,8 @@ class _SocketClientPageState extends State<SocketClientPage> {
         final localIp = await _getLocalIpAddress();
         if (localIp != null && mounted) {
           setState(() {
-            _hostController.text = localIp;
+            _hostController.text =
+                localIp.substring(0, localIp.lastIndexOf('.') + 1);
           });
         }
       });
@@ -489,56 +491,44 @@ class _SocketClientPageState extends State<SocketClientPage> {
                 itemCount: _savedServers.length,
                 itemBuilder: (context, index) {
                   final server = _savedServers[index];
-                  final isConnected =
-                      _socketClient.status.value ==
-                              SocketClientStatus.connected &&
-                          _socketClient.currentServer?.host ==
-                              server.host &&
-                          _socketClient.currentServer?.port ==
-                              server.port;
+                  final isConnected = _socketClient.status.value ==
+                          SocketClientStatus.connected &&
+                      _socketClient.currentServer?.host == server.host &&
+                      _socketClient.currentServer?.port == server.port;
 
                   // 检查是否有任何服务器处于连接中或已连接状态
                   // 注意：当连接失败时，状态会变为error，此时应该允许重新连接
-                  final anyServerConnecting = _socketClient
-                              .status.value ==
+                  final anyServerConnecting = _socketClient.status.value ==
                           SocketClientStatus.connecting ||
                       (_socketClient.status.value ==
                               SocketClientStatus.connected &&
                           _socketClient.currentServer != null);
 
                   return Card(
-                    color: isConnected
-                        ? Colors.green.withAlpha(25)
-                        : null,
-                    margin:
-                        const EdgeInsets.symmetric(vertical: 8),
+                    color: isConnected ? Colors.green.withAlpha(25) : null,
+                    margin: const EdgeInsets.symmetric(vertical: 8),
                     child: Padding(
                       padding: const EdgeInsets.all(12.0),
                       child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // 服务器信息部分
                           Row(
                             children: [
                               Icon(
                                 Icons.computer,
-                                color: isConnected
-                                    ? Colors.green
-                                    : Colors.grey,
+                                color: isConnected ? Colors.green : Colors.grey,
                                 size: 24,
                               ),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       server.name,
                                       style: const TextStyle(
-                                        fontWeight:
-                                            FontWeight.bold,
+                                        fontWeight: FontWeight.bold,
                                         fontSize: 16,
                                       ),
                                     ),
@@ -556,14 +546,11 @@ class _SocketClientPageState extends State<SocketClientPage> {
                               // 状态标记
                               if (isConnected)
                                 Container(
-                                  padding:
-                                      const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
                                     color: Colors.green,
-                                    borderRadius:
-                                        BorderRadius.circular(12),
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: const Text(
                                     '已连接',
@@ -580,17 +567,14 @@ class _SocketClientPageState extends State<SocketClientPage> {
 
                           // 操作按钮部分
                           Row(
-                            mainAxisAlignment:
-                                MainAxisAlignment.end,
+                            mainAxisAlignment: MainAxisAlignment.end,
                             children: [
                               // 编辑按钮
                               TextButton.icon(
-                                icon: const Icon(Icons.edit,
-                                    size: 18),
+                                icon: const Icon(Icons.edit, size: 18),
                                 label: const Text('编辑'),
                                 onPressed: () {
-                                  _showAddServerDialog(
-                                      server: server);
+                                  _showAddServerDialog(server: server);
                                 },
                                 style: TextButton.styleFrom(
                                   foregroundColor: Colors.blue,
@@ -598,8 +582,7 @@ class _SocketClientPageState extends State<SocketClientPage> {
                               ),
                               // 删除按钮
                               TextButton.icon(
-                                icon: const Icon(Icons.delete,
-                                    size: 18),
+                                icon: const Icon(Icons.delete, size: 18),
                                 label: const Text('删除'),
                                 onPressed: () {
                                   _deleteServer(server);
@@ -612,38 +595,30 @@ class _SocketClientPageState extends State<SocketClientPage> {
                               // 连接按钮
                               // 如果有其他服务器连接中或已连接，且当前服务器未连接，则添加提示
                               Tooltip(
-                                message: (anyServerConnecting &&
-                                        !isConnected)
+                                message: (anyServerConnecting && !isConnected)
                                     ? '已有服务器连接，请先断开当前连接'
                                     : '',
                                 // 只在按钮禁用时显示提示
                                 triggerMode:
-                                    (anyServerConnecting &&
-                                            !isConnected)
+                                    (anyServerConnecting && !isConnected)
                                         ? TooltipTriggerMode.tap
-                                        : TooltipTriggerMode
-                                            .manual,
+                                        : TooltipTriggerMode.manual,
                                 child: ElevatedButton.icon(
                                   icon: Icon(
-                                    isConnected
-                                        ? Icons.link
-                                        : Icons.link_off,
+                                    isConnected ? Icons.link : Icons.link_off,
                                     size: 18,
                                   ),
-                                  label: Text(
-                                      isConnected ? '断开' : '连接'),
+                                  label: Text(isConnected ? '断开' : '连接'),
                                   // 如果当前服务器已连接，则显示断开按钮
                                   // 如果有任何服务器处于连接中或已连接状态，且当前服务器未连接，则禁用按钮
                                   onPressed: isConnected
                                       ? () async {
-                                          await _socketClient
-                                              .disconnect();
+                                          await _socketClient.disconnect();
                                           _showSnackBar('已断开连接');
                                           // 强制刷新UI，确保所有按钮状态更新
                                           setState(() {});
                                         }
-                                      : (anyServerConnecting &&
-                                              !isConnected)
+                                      : (anyServerConnecting && !isConnected)
                                           ? null // 如果有其他服务器连接中或已连接，则禁用按钮
                                           : () async {
                                               // 显示连接中的状态
@@ -658,16 +633,17 @@ class _SocketClientPageState extends State<SocketClientPage> {
 
                                                 final success =
                                                     await _socketClient
-                                                        .connect(
-                                                            server);
+                                                        .connect(server);
 
                                                 if (success) {
                                                   // 连接成功，完成连接过程
                                                   try {
-                                                    final completeSuccess = await _socketClient
-                                                        .completeConnection();
+                                                    final completeSuccess =
+                                                        await _socketClient
+                                                            .completeConnection();
 
-                                                    if (completeSuccess && mounted) {
+                                                    if (completeSuccess &&
+                                                        mounted) {
                                                       _showSnackBar('连接成功');
                                                       // 强制刷新UI，确保连接状态显示正确
                                                       setState(() {});
@@ -699,9 +675,8 @@ class _SocketClientPageState extends State<SocketClientPage> {
                                               }
                                             },
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: isConnected
-                                        ? Colors.red
-                                        : Colors.blue,
+                                    backgroundColor:
+                                        isConnected ? Colors.red : Colors.blue,
                                     foregroundColor: Colors.white,
                                   ),
                                 ),
@@ -730,8 +705,7 @@ class _SocketClientPageState extends State<SocketClientPage> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SafeArea(
-              child:
-              Padding(
+              child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 // 根据 _useFullScroll 变量决定布局方式
                 child: _useFullScroll

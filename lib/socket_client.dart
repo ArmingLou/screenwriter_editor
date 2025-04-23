@@ -123,7 +123,8 @@ class SocketClient {
 
       // 检查是否已存在相同配置
       final existingIndex = _savedServers.indexWhere(
-        (server) => server.host == config.host && server.port == config.port,
+        // (server) => server.host == config.host && server.port == config.port,
+        (server) => server.host == config.host,
       );
 
       if (existingIndex >= 0) {
