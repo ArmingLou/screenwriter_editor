@@ -228,7 +228,7 @@ class _SocketClientPageState extends State<SocketClientPage> {
                 controller: _nameController,
                 focusNode: _nameFocusNode,
                 decoration: const InputDecoration(
-                  labelText: '名称',
+                  labelText: '名称 (可选)',
                   hintText: '输入服务器名称',
                 ),
               ),
@@ -289,7 +289,7 @@ class _SocketClientPageState extends State<SocketClientPage> {
     final portText = _portController.text.trim();
     final password = _passwordController.text.trim();
 
-    if (name.isEmpty || host.isEmpty || portText.isEmpty) {
+    if (host.isEmpty || portText.isEmpty) {
       _showSnackBar('请填写所有必填字段', color: Colors.red);
       return;
     }
