@@ -720,18 +720,19 @@ class IsolateSocketServer {
 
     // 监听来自主 Isolate 的命令
     receivePort.listen((message) async {
-      if (message is! Map<String, dynamic>) return;
+      if (message is! Map) return;
 
-      final type = message['type'] as String?;
-      final data = message['data'] as Map<String, dynamic>?;
+      final type = message['type'];
+      if (type is! String) return;
 
-      if (type == null || data == null) return;
+      final data = message['data'];
+      if (data is! Map) return;
 
       switch (type) {
         case 'start':
-          final port = data['port'] as int?;
-          password = data['password'] as String?;
-          requirePassword = data['requirePassword'] as bool? ?? false;
+          final port = data['port'] is int ? data['port'] as int : null;
+          password = data['password'] is String ? data['password'] as String : null;
+          requirePassword = data['requirePassword'] is bool ? data['requirePassword'] as bool : false;
 
           if (port == null) {
             sendError('启动参数无效');
@@ -833,7 +834,7 @@ class IsolateSocketServer {
           break;
 
         case 'send_to_all':
-          final content = data['content'] as String?;
+          final content = data['content'] is String ? data['content'] as String : null;
 
           if (content != null && clients.isNotEmpty) {
             final contentMessage = jsonEncode({
@@ -857,8 +858,8 @@ class IsolateSocketServer {
           break;
 
         case 'send_to_client':
-          final clientIP = data['clientIP'] as String?;
-          final content = data['content'] as String?;
+          final clientIP = data['clientIP'] is String ? data['clientIP'] as String : null;
+          final content = data['content'] is String ? data['content'] as String : null;
 
           if (clientIP != null && content != null) {
             final client = ipToClient[clientIP];
@@ -886,7 +887,7 @@ class IsolateSocketServer {
           break;
 
         case 'disconnect_client':
-          final clientIP = data['clientIP'] as String?;
+          final clientIP = data['clientIP'] is String ? data['clientIP'] as String : null;
 
           if (clientIP != null) {
             final client = ipToClient[clientIP];

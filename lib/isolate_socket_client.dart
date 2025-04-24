@@ -150,7 +150,7 @@ class IsolateSocketClient {
 
     switch (type) {
       case 'status':
-        final statusValue = data['status'] as int?;
+        final statusValue = data['status'] is int ? data['status'] as int : null;
         if (statusValue != null) {
           status.value = IsolateSocketStatus.values[statusValue];
           debugPrint('状态更新: ${status.value}');
@@ -158,7 +158,7 @@ class IsolateSocketClient {
         break;
 
       case 'error':
-        final error = data['message'] as String?;
+        final error = data['message'] is String ? data['message'] as String : null;
         if (error != null) {
           errorMessage = error;
           status.value = IsolateSocketStatus.error;
@@ -192,14 +192,14 @@ class IsolateSocketClient {
         break;
 
       case 'auth_response':
-        final success = data['success'] as bool?;
+        final success = data['success'] is bool ? data['success'] as bool : null;
         if (success == true) {
           _eventController.add(IsolateSocketEvent(
             type: IsolateSocketEventType.auth,
             content: 'success',
           ));
         } else {
-          final message = data['message'] as String? ?? '未知原因';
+          final message = data['message'] is String ? data['message'] as String : '未知原因';
           _eventController.add(IsolateSocketEvent(
             type: IsolateSocketEventType.error,
             errorMessage: '认证失败: $message',
@@ -208,7 +208,7 @@ class IsolateSocketClient {
         break;
 
       case 'content':
-        final content = data['content'] as String?;
+        final content = data['content'] is String ? data['content'] as String : null;
         if (content != null) {
           _eventController.add(IsolateSocketEvent(
             type: IsolateSocketEventType.content,
@@ -218,7 +218,7 @@ class IsolateSocketClient {
         break;
 
       case 'log':
-        final logMessage = data['message'] as String?;
+        final logMessage = data['message'] is String ? data['message'] as String : null;
         if (logMessage != null) {
           debugPrint('[WebSocket Isolate] $logMessage');
         }
@@ -438,7 +438,7 @@ class IsolateSocketClient {
 
           switch (type) {
             case 'auth_response':
-              final success = data['success'] ?? false;
+              final success = data['success'] is bool ? data['success'] as bool : false;
               if (success) {
                 log('认证成功');
                 mainSendPort.send({
@@ -448,7 +448,7 @@ class IsolateSocketClient {
                   },
                 });
               } else {
-                final errorMessage = data['message'] ?? '未知原因';
+                final errorMessage = data['message'] is String ? data['message'] as String : '未知原因';
                 log('认证失败: $errorMessage');
                 mainSendPort.send({
                   'type': 'auth_response',
@@ -461,7 +461,7 @@ class IsolateSocketClient {
               break;
 
             case 'content':
-              final content = data['content'] ?? '';
+              final content = data['content'] is String ? data['content'] as String : '';
               mainSendPort.send({
                 'type': 'content',
                 'data': {
@@ -471,13 +471,13 @@ class IsolateSocketClient {
               break;
 
             case 'error':
-              final errorMessage = data['message'] ?? '未知错误';
+              final errorMessage = data['message'] is String ? data['message'] as String : '未知错误';
               sendError(errorMessage);
               break;
 
             case 'ping':
               // 备用处理 ping 消息
-              final timestamp = data['timestamp'] ?? 0;
+              final timestamp = data['timestamp'] is int ? data['timestamp'] as int : 0;
               if (channel != null && status == IsolateSocketStatus.connected) {
                 channel!.sink.add(jsonEncode({
                   'type': 'pong',
@@ -509,9 +509,9 @@ class IsolateSocketClient {
 
       switch (type) {
         case 'connect':
-          final host = data['host'] as String?;
-          final port = data['port'] as int?;
-          final password = data['password'] as String?;
+          final host = data['host'] is String ? data['host'] as String : null;
+          final port = data['port'] is int ? data['port'] as int : null;
+          final password = data['password'] is String ? data['password'] as String : null;
 
           if (host == null || port == null) {
             sendError('连接参数无效');
@@ -608,7 +608,7 @@ class IsolateSocketClient {
 
         case 'push':
           if (channel != null && status == IsolateSocketStatus.connected) {
-            final content = data['content'] as String?;
+            final content = data['content'] is String ? data['content'] as String : null;
             if (content != null) {
               log('发送推送内容请求，内容长度: ${content.length}');
               channel!.sink.add(jsonEncode({
