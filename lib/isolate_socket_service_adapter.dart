@@ -370,7 +370,7 @@ class SocketService with WidgetsBindingObserver {
 
           // 无论后台运行时间多长，都强制检查服务器状态
           // 因为 iOS 在后台可能会暂停定时器，导致服务器状态检测失效
-          _forceCheckServerStatus();
+          // _forceCheckServerStatus();
         }
         break;
 

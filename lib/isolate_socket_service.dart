@@ -697,6 +697,28 @@ class IsolateSocketServer {
           },
         });
 
+        // 立即发送一个 pong 响应，帮助客户端确认连接已建立
+        try {
+          final timestamp = DateTime.now().millisecondsSinceEpoch;
+          socket.add(jsonEncode({
+            'type': 'pong',
+            'timestamp': timestamp,
+          }));
+          log('已发送初始 pong 响应给客户端: ${clientIP ?? "未知IP"}');
+
+          // 如果不需要密码认证，立即发送认证成功响应
+          if (!requirePassword) {
+            socket.add(jsonEncode({
+              'type': 'auth_response',
+              'success': true,
+            }));
+            authenticatedClients.add(socket);
+            log('客户端自动认证成功: ${clientIP ?? "未知IP"}');
+          }
+        } catch (e) {
+          log('发送初始响应失败: $e');
+        }
+
         log('客户端已连接: ${clientIP ?? "未知IP"}');
 
         // 监听 WebSocket 消息

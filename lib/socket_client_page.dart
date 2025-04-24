@@ -236,21 +236,21 @@ class _SocketClientPageState extends State<SocketClientPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               // 添加提示信息
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withAlpha(25),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  '提示：如果连接失败，请尝试使用电脑的实际IP地址（如192.168.x.x）'
-                  '而不是127.0.0.1或localhost。',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.blue,
-                  ),
-                ),
-              ),
+              // Container(
+              //   padding: const EdgeInsets.all(8),
+              //   decoration: BoxDecoration(
+              //     color: Colors.blue.withAlpha(25),
+              //     borderRadius: BorderRadius.circular(8),
+              //   ),
+              //   child: const Text(
+              //     '提示：如果连接失败，请尝试使用电脑的实际IP地址（如192.168.x.x）'
+              //     '而不是127.0.0.1或localhost。',
+              //     style: TextStyle(
+              //       fontSize: 12,
+              //       color: Colors.blue,
+              //     ),
+              //   ),
+              // ),
               const SizedBox(height: 16),
               TextField(
                 controller: _nameController,
@@ -657,9 +657,9 @@ class _SocketClientPageState extends State<SocketClientPage> {
                                               // 异步连接，不会阻塞UI
                                               try {
                                                 // 检查 IP 地址是否为本地回环地址
-                                                if (server.host == '127.0.0.1' || server.host == 'localhost') {
-                                                  _showSnackBar('提示：正在尝试连接到本地回环地址，如果连接失败，请尝试使用电脑的实际IP地址', color: Colors.orange);
-                                                }
+                                                // if (server.host == '127.0.0.1' || server.host == 'localhost') {
+                                                //   _showSnackBar('提示：正在尝试连接到本地回环地址，如果连接失败，请尝试使用电脑的实际IP地址', color: Colors.orange);
+                                                // }
 
                                                 final success =
                                                     await _socketClient

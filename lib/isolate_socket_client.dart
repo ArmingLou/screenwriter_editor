@@ -261,12 +261,27 @@ class IsolateSocketClient {
 
     // 等待连接结果，设置超时
     try {
-      return await _connectionCompleter!.future.timeout(
-        const Duration(seconds: 3), // 减少超时时间，因为连接拒绝错误会立即被捕获
+      // 创建一个标志，用于跟踪是否已经处理了错误
+      bool errorHandled = false;
+
+      // 创建一个监听器，用于监听错误事件
+      final errorSubscription = events.listen((event) {
+        if (event.type == IsolateSocketEventType.error) {
+          errorHandled = true;
+          // 取消 _connectionCompleter，避免超时处理
+          if (_connectionCompleter != null && !_connectionCompleter!.isCompleted) {
+            _connectionCompleter!.complete(false);
+          }
+        }
+      });
+
+      // 等待连接结果，设置超时
+      final result = await _connectionCompleter!.future.timeout(
+        const Duration(seconds: 5), // 增加超时时间，给认证流程更多时间
         onTimeout: () {
           // 只有当状态不是错误时才更新状态和发送错误事件
           // 这样可以避免重复发送错误事件
-          if (status.value != IsolateSocketStatus.error) {
+          if (status.value != IsolateSocketStatus.error && !errorHandled) {
             errorMessage = '连接超时，服务器可能未响应';
             status.value = IsolateSocketStatus.error;
             _eventController.add(IsolateSocketEvent(
@@ -281,6 +296,11 @@ class IsolateSocketClient {
           return false;
         },
       );
+
+      // 取消监听器
+      errorSubscription.cancel();
+
+      return result;
     } catch (e) {
       // 只有当状态不是错误时才更新状态和发送错误事件
       // 这样可以避免重复发送错误事件
@@ -393,6 +413,12 @@ class IsolateSocketClient {
     WebSocketChannel? channel;
     IsolateSocketStatus status = IsolateSocketStatus.disconnected;
 
+    // 用于跟踪是否收到服务器响应
+    bool receivedResponse = false;
+
+    // 用于跟踪认证结果
+    bool authSuccess = false;
+
     // 发送日志到主 Isolate
     void log(String message) {
       mainSendPort.send({
@@ -449,32 +475,60 @@ class IsolateSocketClient {
             }
           }
 
+          // 快速检查是否是 pong 消息
+          if (message.contains('"type":"pong"')) {
+            log('收到 pong 响应，连接已确认');
+            return;
+          }
+
+          // 快速检查是否是 auth_response 消息
+          if (message.contains('"type":"auth_response"')) {
+            // 检查认证是否成功
+            if (message.contains('"success":true')) {
+              log('收到认证成功响应，连接已确认');
+              receivedResponse = true;
+              authSuccess = true;
+
+              // 更新状态为已连接
+              updateStatus(IsolateSocketStatus.connected);
+
+              // 发送连接成功消息到主 Isolate
+              mainSendPort.send({
+                'type': 'connected',
+                'data': {},
+              });
+            } else {
+              log('收到认证失败响应，连接将被断开');
+              receivedResponse = true;
+              authSuccess = false;
+
+              // 提取错误消息
+              final errorMatch = RegExp(r'"message":"([^"]*)"').firstMatch(message);
+              final errorMessage = errorMatch != null ? errorMatch.group(1) : '未知错误';
+
+              // 发送错误消息到主 Isolate
+              sendError('认证失败: $errorMessage');
+
+              // 更新状态为错误
+              updateStatus(IsolateSocketStatus.error);
+
+              // 不需要等待服务端关闭连接，客户端主动关闭连接
+              if (channel != null) {
+                channel!.sink.close();
+              }
+            }
+            return;
+          }
+
           // 处理其他消息类型
           final data = jsonDecode(message);
           final type = data['type'];
 
           switch (type) {
             case 'auth_response':
-              final success = data['success'] is bool ? data['success'] as bool : false;
-              if (success) {
-                log('认证成功');
-                mainSendPort.send({
-                  'type': 'auth_response',
-                  'data': {
-                    'success': true,
-                  },
-                });
-              } else {
-                final errorMessage = data['message'] is String ? data['message'] as String : '未知原因';
-                log('认证失败: $errorMessage');
-                mainSendPort.send({
-                  'type': 'auth_response',
-                  'data': {
-                    'success': false,
-                    'message': errorMessage,
-                  },
-                });
-              }
+              // 注意：我们已经在快速检查中处理了认证响应
+              // 这里不需要重复处理
+              log('收到 auth_response 消息，已在快速检查中处理');
               break;
 
             case 'content':
@@ -515,7 +569,7 @@ class IsolateSocketClient {
     }
 
     // 监听来自主 Isolate 的命令
-    receivePort.listen((message) {
+    receivePort.listen((message) async {
       if (message is! Map) return;
 
       final type = message['type'];
@@ -567,7 +621,8 @@ class IsolateSocketClient {
             log('主机: ${uri.host}, 端口: ${uri.port}');
 
             // 设置一个标志，用于检测是否收到了服务器的响应
-            bool receivedResponse = false;
+            // 声明为外部变量，以便在 handleWebSocketMessage 中访问
+            receivedResponse = false;
 
             // 使用更简单的连接方式
             try {
@@ -611,63 +666,24 @@ class IsolateSocketClient {
               throw Exception('WebSocket 连接创建失败');
             }
 
-            // 设置一个监听器，用于检测服务器的响应
-            final responseCompleter = Completer<bool>();
-            final subscription = channel!.stream.listen(
-              (message) {
-                log('收到服务器响应: $message');
-                receivedResponse = true;
-                if (!responseCompleter.isCompleted) {
-                  responseCompleter.complete(true);
-                }
-              },
-              onError: (error) {
-                log('连接错误: $error');
-                if (!responseCompleter.isCompleted) {
-                  responseCompleter.completeError(error);
-                }
-              },
-              onDone: () {
-                log('连接已关闭');
-                if (!responseCompleter.isCompleted) {
-                  responseCompleter.complete(false);
-                }
-              },
-            );
+            // 设置一个标志，用于跟踪是否收到服务器响应
+            receivedResponse = false;
 
-            // 发送一个初始消息来验证连接是否真正建立
-            log('发送初始消息验证连接...');
-            channel!.sink.add(jsonEncode({
-              'type': 'auth',
-              'password': password ?? '',
-            }));
-
-            // 使用同步延迟，确保连接是真实的
-            final startTime = DateTime.now();
-            while (DateTime.now().difference(startTime).inMilliseconds < 1000 && !receivedResponse) {
-              // 简单的延迟
-            }
-
-            // 如果没有收到响应，抛出异常
-            if (!receivedResponse) {
-              // 取消订阅
-              subscription.cancel();
-
-              // 关闭连接
-              channel!.sink.close();
-
-              // 抛出异常
-              throw Exception('连接超时，未收到服务器响应，服务器可能未启动');
-            }
-
-            // 取消临时订阅
-            subscription.cancel();
-
-            log('成功创建 WebSocket 连接');
-
-            // 设置消息监听
+            // 设置消息监听 - 只监听一次流
             channel!.stream.listen(
-              handleWebSocketMessage,
+              (message) {
+                // 处理所有消息
+                log('收到服务器响应: $message');
+
+                // 如果是初始连接阶段
+                if (!receivedResponse) {
+                  receivedResponse = true;
+                  log('已收到服务器响应，连接成功');
+                }
+
+                // 处理消息
+                handleWebSocketMessage(message);
+              },
               onDone: () {
                 log('WebSocket 连接已关闭');
                 updateStatus(IsolateSocketStatus.disconnected);
@@ -690,22 +706,115 @@ class IsolateSocketClient {
               },
             );
 
-            // 更新状态为已连接
-            updateStatus(IsolateSocketStatus.connected);
+            // 发送认证消息来验证连接是否真正建立
+            log('发送认证消息验证连接...');
+            channel!.sink.add(jsonEncode({
+              'type': 'auth',
+              'password': password ?? '',
+            }));
 
-            // 发送连接成功消息到主 Isolate
-            mainSendPort.send({
-              'type': 'connected',
-              'data': {},
+            // 使用 Completer 等待认证响应
+            final authCompleter = Completer<bool>();
+
+            // 设置一个标志，用于跟踪认证结果
+            bool authCompleted = false;
+
+            // 设置一个监听器，用于监听认证结果
+            void authListener() {
+              if (receivedResponse) {
+                if (!authCompleted) {
+                  authCompleted = true;
+                  // 根据认证结果完成 Completer
+                  authCompleter.complete(authSuccess);
+                }
+              }
+            }
+
+            // 设置一个定时器，每隔 1 秒检查一次认证结果
+            final authTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+              authListener();
+              if (authCompleted) {
+                timer.cancel();
+              } else {
+                log('等待认证响应... ${timer.tick}/10 秒');
+                if (timer.tick >= 10) {
+                  timer.cancel();
+                  if (!authCompleted) {
+                    authCompleted = true;
+                    authCompleter.complete(false);
+                  }
+                }
+              }
             });
 
-            // 如果有密码，发送认证请求
-            if (password != null && password.isNotEmpty) {
-              log('发送认证请求，密码长度: ${password.length}');
-              channel!.sink.add(jsonEncode({
-                'type': 'auth',
-                'password': password,
-              }));
+            // 等待认证结果
+            try {
+              // 设置一个标志，用于跟踪是否已经处理了认证失败
+              bool authFailureHandled = false;
+
+              // 设置一个监听器，用于监听认证失败
+              void checkAuthFailure() {
+                if (receivedResponse && !authSuccess && !authFailureHandled) {
+                  authFailureHandled = true;
+                  log('认证失败，不再等待认证响应');
+
+                  // 取消定时器
+                  authTimer.cancel();
+
+                  // 完成 Completer
+                  if (!authCompleter.isCompleted) {
+                    authCompleter.complete(false);
+                  }
+                }
+              }
+
+              // 设置一个定时器，每隔 100 毫秒检查一次认证失败
+              final authFailureTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+                checkAuthFailure();
+              });
+
+              // 等待认证结果
+              final result = await authCompleter.future.timeout(
+                const Duration(seconds: 10),
+                onTimeout: () {
+                  log('认证超时');
+                  return false;
+                },
+              );
+
+              // 取消定时器
+              authTimer.cancel();
+              authFailureTimer.cancel();
+
+              // 如果认证失败，但是没有被处理，则抛出异常
+              if (!result && !authFailureHandled) {
+                // 关闭连接
+                if (channel != null) {
+                  channel!.sink.close();
+                }
+
+                // 抛出异常
+                throw Exception('连接超时，未收到服务器响应，服务器可能未启动');
+              }
+
+              // 如果认证成功，记录日志
+              // 注意：状态更新已经在 handleWebSocketMessage 中完成
+              if (result) {
+                log('认证成功，连接已建立');
+              }
+            } catch (e) {
+              // 取消定时器
+              authTimer.cancel();
+
+              // 关闭连接
+              if (channel != null) {
+                channel!.sink.close();
+              }
+
+              // 如果不是认证失败，则抛出异常
+              if (!receivedResponse || authSuccess) {
+                rethrow;
+              }
             }
           } catch (e, stackTrace) {
             log('连接错误: $e');
