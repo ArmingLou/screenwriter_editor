@@ -542,6 +542,62 @@ class SocketService with WidgetsBindingObserver {
     if (!canConnect) {
       debugPrint('Cannot connect to server, considering it stopped');
       _handleServerError('服务器已停止监听，无法接受连接');
+      return;
+    }
+
+    // 检查已连接客户端是否由于各种原因断开连接，而服务端没有收到通知
+    List<WebSocket> disconnectedSockets = [];
+
+    // 首先收集所有断开连接的客户端，避免在遍历过程中修改集合
+    for (var socket in _clients) {
+      try {
+        // 检查 WebSocket 的状态
+        if (socket.readyState != WebSocket.open) {
+          disconnectedSockets.add(socket);
+          debugPrint('检测到客户端断开连接: ${_clientIPs[socket] ?? "未知IP"}, 状态: ${socket.readyState}');
+        } else {
+          // 尝试发送一个 ping 消息来检测连接是否仍然有效
+          try {
+            // 使用空字符串作为 ping 消息，避免干扰正常通信
+            socket.add(jsonEncode({
+              'type': 'ping',
+              'timestamp': DateTime.now().millisecondsSinceEpoch,
+            }));
+          } catch (pingError) {
+            // 如果发送 ping 消息失败，认为客户端已断开连接
+            disconnectedSockets.add(socket);
+            debugPrint('发送 ping 消息失败，客户端可能已断开连接: ${_clientIPs[socket] ?? "未知IP"}, 错误: $pingError');
+          }
+        }
+      } catch (e) {
+        // 如果访问 socket 属性时发生异常，认为客户端已断开连接
+        disconnectedSockets.add(socket);
+        debugPrint('检测客户端状态时发生异常，客户端可能已断开连接: ${_clientIPs[socket] ?? "未知IP"}, 错误: $e');
+      }
+    }
+
+    // 处理所有断开连接的客户端
+    for (var socket in disconnectedSockets) {
+      final ip = _clientIPs[socket];
+
+      // 从列表中移除
+      _clients.remove(socket);
+      _authenticatedClients.remove(socket);
+      _clientIPs.remove(socket);
+
+      // 触发客户端断开连接事件
+      _eventController.add(SocketEvent(
+        type: SocketEventType.clientDisconnected,
+        content: ip,
+        socket: socket,
+      ));
+
+      debugPrint('客户端已从列表中移除: ${ip ?? "未知IP"}');
+    }
+
+    // 如果有客户端断开连接，记录日志
+    if (disconnectedSockets.isNotEmpty) {
+      debugPrint('共有 ${disconnectedSockets.length} 个客户端被检测到断开连接并已移除');
     }
   }
 
