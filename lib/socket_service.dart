@@ -46,6 +46,10 @@ class SocketService with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
   }
 
+  final checkDuaration = Duration(seconds: 30);
+  final pingpongDuaration =
+      Duration(seconds: 25); // 经调试，即使正常连接，ping - pong 时间差可能都高达 20多秒
+
   // 服务器实例
   HttpServer? _server;
 
@@ -76,6 +80,13 @@ class SocketService with WidgetsBindingObserver {
 
   // 客户端IP地址映射
   final Map<WebSocket, String> _clientIPs = {};
+
+  // 客户端 ping 超时计时器
+  // 同时用于判断是否有待处理的 ping（如果 _pingTimers[socket] 不为 null，则表示有待处理的 ping）
+  final Map<WebSocket, Timer> _pingTimers = {};
+
+  // 注意：我们不需要额外的集合来跟踪已处理的断开连接客户端
+  // 可以直接通过检查 _clients 是否包含对应的 socket 来判断是否已经处理过
 
   // 事件流控制器
   final StreamController<SocketEvent> _eventController =
@@ -149,7 +160,7 @@ class SocketService with WidgetsBindingObserver {
 
       // 添加定期检查服务器状态
       _serverErrorSubscription =
-          Stream.periodic(const Duration(seconds: 5)).listen(
+          Stream.periodic(checkDuaration).listen(
         (_) async {
           // 如果应用在前台，执行定期检查
           if (_isAppInForeground &&
@@ -188,9 +199,17 @@ class SocketService with WidgetsBindingObserver {
       for (var client in _clients) {
         await client.close();
       }
+
+      // 取消所有 ping 计时器
+      for (var timer in _pingTimers.values) {
+        timer.cancel();
+      }
+
+      // 清理所有集合
       _clients.clear();
       _clientIPs.clear();
       _authenticatedClients.clear();
+      _pingTimers.clear();
 
       // 关闭服务器
       await _server!.close();
@@ -223,6 +242,8 @@ class SocketService with WidgetsBindingObserver {
         _clientIPs[socket] = clientIP;
       }
 
+      // 初始化时不需要设置 ping 状态，因为我们使用 _pingTimers 来判断是否有待处理的 ping
+
       // 触发客户端连接事件
       _eventController.add(SocketEvent(
         type: SocketEventType.clientConnected,
@@ -236,30 +257,12 @@ class SocketService with WidgetsBindingObserver {
           _handleMessage(message, socket);
         },
         onDone: () {
-          final ip = _clientIPs[socket];
-          _clients.remove(socket);
-          _authenticatedClients.remove(socket);
-          _clientIPs.remove(socket);
-
-          // 触发客户端断开事件
-          _eventController.add(SocketEvent(
-            type: SocketEventType.clientDisconnected,
-            content: ip,
-            socket: socket,
-          ));
+          // 清理客户端资源并触发断开连接事件
+          disconnectClient(socket, reason: "连接关闭");
         },
         onError: (error, stackTrace) {
-          final ip = _clientIPs[socket];
-          _clients.remove(socket);
-          _authenticatedClients.remove(socket);
-          _clientIPs.remove(socket);
-
-          // 触发客户端断开事件
-          _eventController.add(SocketEvent(
-            type: SocketEventType.clientDisconnected,
-            content: ip,
-            socket: socket,
-          ));
+          // 清理客户端资源并触发断开连接事件
+          disconnectClient(socket, reason: "连接错误");
 
           // 记录错误
           debugPrint('WebSocket error: $error');
@@ -370,6 +373,20 @@ class SocketService with WidgetsBindingObserver {
             content: content,
             socket: socket,
           ));
+        } else if (type == 'pong') {
+          // 处理 pong 响应
+          final int timestamp = data['timestamp'] ?? 0;
+          final int roundTripTime =
+              DateTime.now().millisecondsSinceEpoch - timestamp;
+
+          // 取消该客户端的 ping 超时计时器
+          _pingTimers[socket]?.cancel();
+          _pingTimers.remove(socket);
+
+          // 取消该客户端的 ping 超时计时器表示已响应 ping
+
+          debugPrint(
+              '收到客户端 pong 响应: ${_clientIPs[socket] ?? "未知IP"}, 往返时间: $roundTripTime ms');
         }
       } catch (e) {
         // 使用日志而非直接打印
@@ -549,55 +566,126 @@ class SocketService with WidgetsBindingObserver {
     List<WebSocket> disconnectedSockets = [];
 
     // 首先收集所有断开连接的客户端，避免在遍历过程中修改集合
+    // 注意：由于我们在 Timer 回调中会从 _clients 中移除已处理的客户端
+    // 所以这里不需要额外的检查来避免重复处理
     for (var socket in _clients) {
       try {
         // 检查 WebSocket 的状态
         if (socket.readyState != WebSocket.open) {
           disconnectedSockets.add(socket);
-          debugPrint('检测到客户端断开连接: ${_clientIPs[socket] ?? "未知IP"}, 状态: ${socket.readyState}');
+          debugPrint(
+              '检测到客户端断开连接: ${_clientIPs[socket] ?? "未知IP"}, 状态: ${socket.readyState}');
+
+          // 取消该客户端的 ping 超时计时器
+          _pingTimers[socket]?.cancel();
+          _pingTimers.remove(socket);
         } else {
+          // 如果客户端已经有一个待处理的 ping，不要发送新的 ping
+          if (_pingTimers.containsKey(socket)) {
+            debugPrint(
+                '客户端 ${_clientIPs[socket] ?? "未知IP"} 有一个待处理的 ping，跳过发送新的 ping');
+            continue;
+          }
+
           // 尝试发送一个 ping 消息来检测连接是否仍然有效
           try {
-            // 使用空字符串作为 ping 消息，避免干扰正常通信
+            final timestamp = DateTime.now().millisecondsSinceEpoch;
+
+            // 发送 ping 消息
             socket.add(jsonEncode({
               'type': 'ping',
-              'timestamp': DateTime.now().millisecondsSinceEpoch,
+              'timestamp': timestamp,
             }));
+
+            // 设置计时器表示该客户端有一个待处理的 ping
+
+            // 设置 3 秒超时计时器
+            _pingTimers[socket]?.cancel(); // 取消之前的计时器（如果有）
+            _pingTimers[socket] = Timer(pingpongDuaration, () async {
+              // 如果 3 秒后客户端仍然存在，认为客户端已断开连接
+              if (_clients.contains(socket)) {
+                debugPrint(
+                    '客户端 ${_clientIPs[socket] ?? "未知IP"} 未在 3 秒内响应 ping，认为已断开连接');
+
+                // 由于这是在异步的 Timer 回调中，我们需要直接处理断开连接的客户端
+                // 而不是添加到 disconnectedSockets 列表中
+
+                // 清理客户端资源并触发断开连接事件
+                await disconnectClient(socket, reason: "ping 超时");
+              }
+            });
+
+            debugPrint(
+                '向客户端 ${_clientIPs[socket] ?? "未知IP"} 发送 ping 消息，等待 pong 响应');
           } catch (pingError) {
             // 如果发送 ping 消息失败，认为客户端已断开连接
             disconnectedSockets.add(socket);
-            debugPrint('发送 ping 消息失败，客户端可能已断开连接: ${_clientIPs[socket] ?? "未知IP"}, 错误: $pingError');
+            debugPrint(
+                '发送 ping 消息失败，客户端可能已断开连接: ${_clientIPs[socket] ?? "未知IP"}, 错误: $pingError');
           }
         }
       } catch (e) {
         // 如果访问 socket 属性时发生异常，认为客户端已断开连接
         disconnectedSockets.add(socket);
-        debugPrint('检测客户端状态时发生异常，客户端可能已断开连接: ${_clientIPs[socket] ?? "未知IP"}, 错误: $e');
+        debugPrint(
+            '检测客户端状态时发生异常，客户端可能已断开连接: ${_clientIPs[socket] ?? "未知IP"}, 错误: $e');
       }
     }
 
     // 处理所有断开连接的客户端
-    for (var socket in disconnectedSockets) {
-      final ip = _clientIPs[socket];
+    _handleDisconnectedClients(disconnectedSockets);
+  }
 
-      // 从列表中移除
-      _clients.remove(socket);
-      _authenticatedClients.remove(socket);
-      _clientIPs.remove(socket);
+  /// 清理客户端资源并触发断开连接事件
+  /// 返回客户端的IP地址
+  String? _cleanupClient(WebSocket socket,
+      {bool notifyDisconnect = true, String? reason}) {
+    if (!_clients.contains(socket)) {
+      return null; // 客户端已经被处理过
+    }
 
-      // 触发客户端断开连接事件
+    // 获取客户端 IP
+    final ip = _clientIPs[socket];
+
+    // 从列表中移除
+    _clients.remove(socket);
+    _authenticatedClients.remove(socket);
+    _clientIPs.remove(socket);
+
+    // 清理 ping 状态
+    _pingTimers[socket]?.cancel();
+    _pingTimers.remove(socket);
+
+    // 触发客户端断开连接事件
+    if (notifyDisconnect) {
       _eventController.add(SocketEvent(
         type: SocketEventType.clientDisconnected,
         content: ip,
         socket: socket,
       ));
+    }
 
-      debugPrint('客户端已从列表中移除: ${ip ?? "未知IP"}');
+    final logReason = reason != null ? "（$reason）" : "";
+    debugPrint('客户端已从列表中移除$logReason: ${ip ?? "未知IP"}');
+
+    return ip;
+  }
+
+  /// 处理断开连接的客户端
+  void _handleDisconnectedClients(List<WebSocket> disconnectedSockets) async {
+    if (disconnectedSockets.isEmpty) return;
+
+    int count = 0;
+    for (var socket in disconnectedSockets) {
+      final suc = await disconnectClient(socket);
+      if (suc) {
+        count++;
+      }
     }
 
     // 如果有客户端断开连接，记录日志
-    if (disconnectedSockets.isNotEmpty) {
-      debugPrint('共有 ${disconnectedSockets.length} 个客户端被检测到断开连接并已移除');
+    if (count > 0) {
+      debugPrint('共有 $count 个客户端被检测到断开连接并已移除');
     }
   }
 
@@ -629,14 +717,14 @@ class SocketService with WidgetsBindingObserver {
   }
 
   /// 断开特定客户端连接
-  Future<bool> disconnectClient(WebSocket socket) async {
+  Future<bool> disconnectClient(WebSocket socket,
+      {bool notifyDisconnect = true, String? reason}) async {
     try {
       if (_clients.contains(socket)) {
         await socket.close();
-        _clients.remove(socket);
-        _authenticatedClients.remove(socket);
-        _clientIPs.remove(socket);
-        return true;
+        final ip = _cleanupClient(socket,
+            reason: reason, notifyDisconnect: notifyDisconnect);
+        return ip != null;
       }
       return false;
     } catch (e) {

@@ -425,11 +425,31 @@ class SocketClient {
           ));
         } else if (type == 'error') {
           _handleError(data['message'] ?? '未知错误');
+        } else if (type == 'ping') {
+          // 处理 ping 消息，立即回复 pong 消息
+          final int timestamp = data['timestamp'] ?? 0;
+          _sendPongResponse(timestamp);
+          debugPrint('收到 ping 消息，已回复 pong 响应，时间戳: $timestamp');
         }
       } catch (e) {
         debugPrint('Error parsing message: $e');
       }
     }
+  }
+
+  /// 发送 pong 响应
+  void _sendPongResponse(int timestamp) {
+    if (_channel == null || status.value != SocketClientStatus.connected) {
+      debugPrint('无法发送 pong 响应: WebSocket通道为空或未连接');
+      return;
+    }
+
+    final pongResponse = jsonEncode({
+      'type': 'pong',
+      'timestamp': timestamp,
+    });
+
+    _channel!.sink.add(pongResponse);
   }
 
   /// 处理断开连接
