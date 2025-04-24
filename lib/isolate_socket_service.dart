@@ -21,6 +21,8 @@ enum IsolateSocketServerEventType {
   fetch,             // 收到获取内容请求
   push,              // 收到推送内容请求
   error,             // 发生错误
+  auth,              // 认证事件
+  blacklistUpdated,  // 黑名单更新
 }
 
 /// Socket服务端事件数据结构
@@ -219,6 +221,17 @@ class IsolateSocketServer {
           debugPrint('[WebSocket Server Isolate] $logMessage');
         }
         break;
+
+      case 'blacklist_updated':
+        final blacklist = data['blacklist'] as List?;
+        if (blacklist != null) {
+          _eventController.add(IsolateSocketServerEvent(
+            type: IsolateSocketServerEventType.blacklistUpdated,
+            content: jsonEncode(blacklist),
+          ));
+          debugPrint('黑名单已更新: $blacklist');
+        }
+        break;
     }
   }
 
@@ -339,6 +352,53 @@ class IsolateSocketServer {
     });
   }
 
+  /// 禁止特定客户端
+  void banClient(String clientIP) {
+    if (status.value != IsolateSocketServerStatus.running) return;
+
+    // 先断开客户端连接
+    disconnectClient(clientIP);
+
+    // 发送 ban_client 命令到服务端 Isolate
+    _sendPort?.send({
+      'type': 'ban_client',
+      'data': {
+        'clientIP': clientIP,
+      },
+    });
+
+    // 通知主 Isolate 客户端已被禁止
+    _eventController.add(IsolateSocketServerEvent(
+      type: IsolateSocketServerEventType.clientDisconnected,
+      clientIP: clientIP,
+      errorMessage: "客户端已被禁止",
+    ));
+
+    debugPrint('客户端已被禁止: $clientIP');
+  }
+
+  /// 解除禁止特定客户端
+  void unbanClient(String clientIP) {
+    if (status.value != IsolateSocketServerStatus.running) return;
+
+    // 发送 unban_client 命令到服务端 Isolate
+    _sendPort?.send({
+      'type': 'unban_client',
+      'data': {
+        'clientIP': clientIP,
+      },
+    });
+
+    // 通知主 Isolate 黑名单已更新，但不触发客户端连接事件
+    // 因为解除禁止并不意味着客户端已连接
+    _eventController.add(IsolateSocketServerEvent(
+      type: IsolateSocketServerEventType.blacklistUpdated,
+      content: "客户端已解除禁止",
+    ));
+
+    debugPrint('客户端已解除禁止: $clientIP');
+  }
+
   /// 获取当前连接的客户端数量
   int get clientCount => clientCountNotifier.value;
 
@@ -387,6 +447,9 @@ class IsolateSocketServer {
     final clientIPs = <WebSocket, String>{};
     final authenticatedClients = <WebSocket>{};
     final ipToClient = <String, WebSocket>{};
+
+    // 黑名单列表
+    final blacklistedIPs = <String>{};
 
     // ping-pong 状态跟踪
     final lastPingSentTime = <WebSocket, DateTime>{};
@@ -500,6 +563,15 @@ class IsolateSocketServer {
                 }));
 
                 log('客户端认证成功: ${clientIP ?? "未知IP"}');
+
+                // 通知主 Isolate 客户端认证成功
+                mainSendPort.send({
+                  'type': 'auth',
+                  'data': {
+                    'clientIP': clientIP,
+                    'success': true,
+                  },
+                });
               } else {
                 // 发送认证失败响应
                 socket.add(jsonEncode({
@@ -509,6 +581,15 @@ class IsolateSocketServer {
                 }));
 
                 log('客户端认证失败: ${clientIP ?? "未知IP"}');
+
+                // 通知主 Isolate 客户端认证失败
+                mainSendPort.send({
+                  'type': 'auth',
+                  'data': {
+                    'clientIP': clientIP,
+                    'success': false,
+                  },
+                });
 
                 // 断开连接
                 socket.close();
@@ -586,6 +667,15 @@ class IsolateSocketServer {
       // 获取客户端 IP
       final clientIP = request.connectionInfo?.remoteAddress.address;
 
+      // 检查客户端 IP 是否在黑名单中
+      if (clientIP != null && blacklistedIPs.contains(clientIP)) {
+        log('拒绝黑名单中的客户端连接: $clientIP');
+        request.response.statusCode = HttpStatus.forbidden;
+        request.response.write('您的 IP 地址已被禁止连接');
+        await request.response.close();
+        return;
+      }
+
       try {
         // 升级到 WebSocket 连接
         final socket = await WebSocketTransformer.upgrade(request);
@@ -598,6 +688,8 @@ class IsolateSocketServer {
         }
 
         // 通知主 Isolate 客户端已连接
+        log('准备发送客户端连接事件到主 Isolate: ${clientIP ?? "未知IP"}');
+
         mainSendPort.send({
           'type': 'client_connected',
           'data': {
@@ -729,6 +821,25 @@ class IsolateSocketServer {
       if (data is! Map) return;
 
       switch (type) {
+        case 'auth':
+          // 处理认证事件
+          final clientIP = data['clientIP'] is String ? data['clientIP'] as String : null;
+          final success = data['success'] is bool ? data['success'] as bool : false;
+
+          if (clientIP != null) {
+            // 通知主 Isolate 客户端认证结果
+            mainSendPort.send({
+              'type': 'auth',
+              'data': {
+                'clientIP': clientIP,
+                'success': success,
+              },
+            });
+
+            log('发送认证${success ? '成功' : '失败'}事件到主 Isolate: $clientIP');
+          }
+          break;
+
         case 'start':
           final port = data['port'] is int ? data['port'] as int : null;
           password = data['password'] is String ? data['password'] as String : null;
@@ -764,18 +875,42 @@ class IsolateSocketServer {
           updateStatus(IsolateSocketServerStatus.starting);
 
           try {
-            // 创建 HTTP 服务器
-            server = await HttpServer.bind(InternetAddress.anyIPv4, port);
+            // 创建 HTTP 服务器，允许来自任何地址的连接
+            server = await HttpServer.bind(InternetAddress.anyIPv4, port, shared: true);
+            log('服务器绑定到地址: ${InternetAddress.anyIPv4.address}, 端口: $port');
 
             // 监听 HTTP 请求
-            server!.listen((request) {
-              if (WebSocketTransformer.isUpgradeRequest(request)) {
-                handleWebSocketRequest(request);
-              } else {
-                request.response.statusCode = HttpStatus.forbidden;
-                request.response.close();
-              }
-            });
+            server!.listen(
+              (request) {
+                if (WebSocketTransformer.isUpgradeRequest(request)) {
+                  handleWebSocketRequest(request);
+                } else {
+                  request.response.statusCode = HttpStatus.forbidden;
+                  request.response.close();
+                }
+              },
+              onError: (error) {
+                // 处理服务器监听过程中的错误
+                log('服务器监听错误: $error');
+                sendError('服务器监听错误: $error');
+                updateStatus(IsolateSocketServerStatus.error);
+              },
+              onDone: () {
+                // 服务器关闭时的处理
+                log('服务器已关闭');
+                // 如果状态不是已停止或错误，则认为是异常关闭
+                if (server != null) {
+                  sendError('服务器意外关闭');
+                  updateStatus(IsolateSocketServerStatus.error);
+
+                  // 通知主 Isolate 服务器已停止
+                  mainSendPort.send({
+                    'type': 'stopped',
+                    'data': {},
+                  });
+                }
+              },
+            );
 
             // 启动 ping 定时器
             startPingTimer();
@@ -796,6 +931,14 @@ class IsolateSocketServer {
             log('启动服务器错误: $e');
             sendError('启动服务器错误: $e');
             updateStatus(IsolateSocketServerStatus.error);
+
+            // 确保错误信息被发送到主 Isolate
+            mainSendPort.send({
+              'type': 'error',
+              'data': {
+                'message': '启动服务器错误: $e',
+              },
+            });
           }
           break;
 
@@ -906,6 +1049,57 @@ class IsolateSocketServer {
             } else {
               log('客户端 $clientIP 不存在或已断开连接');
             }
+          }
+          break;
+
+        case 'ban_client':
+          final clientIP = data['clientIP'] is String ? data['clientIP'] as String : null;
+
+          if (clientIP != null) {
+            // 添加到黑名单
+            blacklistedIPs.add(clientIP);
+            log('已将客户端 $clientIP 添加到黑名单');
+
+            // 断开客户端连接
+            final client = ipToClient[clientIP];
+            if (client != null) {
+              try {
+                await client.close();
+
+                // 从列表中移除（handleClientDisconnect 会处理剩余的清理工作）
+                handleClientDisconnect(client);
+
+                log('已断开被禁止客户端 $clientIP 的连接');
+              } catch (e) {
+                log('断开被禁止客户端 $clientIP 连接失败: $e');
+              }
+            }
+
+            // 通知主 Isolate 黑名单已更新
+            mainSendPort.send({
+              'type': 'blacklist_updated',
+              'data': {
+                'blacklist': blacklistedIPs.toList(),
+              },
+            });
+          }
+          break;
+
+        case 'unban_client':
+          final clientIP = data['clientIP'] is String ? data['clientIP'] as String : null;
+
+          if (clientIP != null) {
+            // 从黑名单中移除
+            blacklistedIPs.remove(clientIP);
+            log('已将客户端 $clientIP 从黑名单中移除');
+
+            // 通知主 Isolate 黑名单已更新
+            mainSendPort.send({
+              'type': 'blacklist_updated',
+              'data': {
+                'blacklist': blacklistedIPs.toList(),
+              },
+            });
           }
           break;
       }

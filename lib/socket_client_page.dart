@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'socket_client.dart';
+import 'socket_service_factory.dart';
+import 'isolate_socket_client_adapter.dart';
 
 class SocketClientPage extends StatefulWidget {
   const SocketClientPage({super.key});
@@ -11,7 +12,7 @@ class SocketClientPage extends StatefulWidget {
 }
 
 class _SocketClientPageState extends State<SocketClientPage> {
-  final SocketClient _socketClient = SocketClient();
+  final _socketClient = SocketServiceFactory.getSocketClient();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _hostController = TextEditingController();
   final TextEditingController _portController = TextEditingController();
@@ -79,21 +80,25 @@ class _SocketClientPageState extends State<SocketClientPage> {
     // 监听SocketClient事件
     _eventSubscription = _socketClient.events.listen((event) {
       if (event.type == SocketClientEventType.error) {
-        // 当发生错误时，刷新UI
+        // 当发生错误时，刷新UI并显示错误信息
         if (mounted) {
           setState(() {});
-          // final errorMsg = event.errorMessage ?? '发生错误';
-          // _showSnackBar(errorMsg, color: Colors.red);
+          final errorMsg = event.errorMessage ?? '发生错误';
+          _showSnackBar(errorMsg, color: Colors.red);
+          debugPrint('SocketClientPage: 收到错误事件: $errorMsg');
         }
       } else if (event.type == SocketClientEventType.disconnected) {
         // 当断开连接时，刷新UI
         if (mounted) {
           setState(() {});
+          debugPrint('SocketClientPage: 收到断开连接事件');
         }
       } else if (event.type == SocketClientEventType.connected) {
         // 当连接成功时，刷新UI
         if (mounted) {
           setState(() {});
+          _showSnackBar('连接成功', color: Colors.green);
+          debugPrint('SocketClientPage: 收到连接成功事件');
         }
       }
     });
@@ -120,6 +125,15 @@ class _SocketClientPageState extends State<SocketClientPage> {
         includeLinkLocal: false, // 不包含链路本地地址
         type: InternetAddressType.IPv4, // 只考虑IPv4地址
       );
+
+      // 打印所有网络接口信息，便于调试
+      debugPrint('网络接口列表:');
+      for (var interface in interfaces) {
+        debugPrint('接口: ${interface.name}');
+        for (var addr in interface.addresses) {
+          debugPrint('  地址: ${addr.address}');
+        }
+      }
 
       // 存储所有可用的IP地址，按优先级分类
       List<String> ip192Addresses = [];
@@ -221,6 +235,23 @@ class _SocketClientPageState extends State<SocketClientPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // 添加提示信息
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withAlpha(25),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  '提示：如果连接失败，请尝试使用电脑的实际IP地址（如192.168.x.x）'
+                  '而不是127.0.0.1或localhost。',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.blue,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
               TextField(
                 controller: _nameController,
                 focusNode: _nameFocusNode,
@@ -365,7 +396,7 @@ class _SocketClientPageState extends State<SocketClientPage> {
 
   // 状态卡片
   Widget _buildStatusCard() {
-    return ValueListenableBuilder<SocketClientStatus>(
+    return ValueListenableBuilder(
       valueListenable: _socketClient.status,
       builder: (context, status, child) {
         Color statusColor;
@@ -625,8 +656,10 @@ class _SocketClientPageState extends State<SocketClientPage> {
 
                                               // 异步连接，不会阻塞UI
                                               try {
-                                                // 不需要使用单一变量跟踪是否已经显示错误信息
-                                                // 因为我们已经在事件监听器中禁用了错误消息显示
+                                                // 检查 IP 地址是否为本地回环地址
+                                                if (server.host == '127.0.0.1' || server.host == 'localhost') {
+                                                  _showSnackBar('提示：正在尝试连接到本地回环地址，如果连接失败，请尝试使用电脑的实际IP地址', color: Colors.orange);
+                                                }
 
                                                 final success =
                                                     await _socketClient
@@ -641,27 +674,25 @@ class _SocketClientPageState extends State<SocketClientPage> {
 
                                                     if (completeSuccess &&
                                                         mounted) {
-                                                      // _showSnackBar('连接成功');
                                                       // 强制刷新UI，确保连接状态显示正确
                                                       setState(() {});
                                                     }
                                                   } catch (e) {
                                                     // 完成连接过程失败
                                                     if (mounted) {
-                                                      _showSnackBar(
-                                                          '连接失败: ${e.toString()}',
-                                                          color: Colors.red);
+                                                      // 不在这里显示错误消息，而是让事件监听器处理
+                                                      // 错误会通过事件系统传递，并在事件监听器中显示
                                                       setState(() {});
                                                     }
                                                   }
                                                 }
-                                                // 不成功会 发送事件 SocketClientEventType.error 。已经在事件处理中 弹窗。
+                                                // 不成功会发送事件 SocketClientEventType.error，已经在事件处理中弹窗
                                               } catch (e) {
                                                 // 捕获所有异常，确保 UI 不会卡死
                                                 if (mounted) {
-                                                  _showSnackBar(
-                                                      '连接过程发生错误: ${e.toString()}',
-                                                      color: Colors.red);
+                                                  // 不在这里显示错误消息，而是让事件监听器处理
+                                                  // 错误会通过事件系统传递，并在事件监听器中显示
+                                                  debugPrint('连接过程捕获到异常: $e');
                                                   setState(() {});
                                                 }
                                               }

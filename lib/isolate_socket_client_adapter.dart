@@ -281,7 +281,15 @@ class SocketClient {
     // 更新错误信息
     if (isolateStatus == IsolateSocketStatus.error) {
       errorMessage = _isolateClient.errorMessage;
+      debugPrint('SocketClient: 状态变为错误，错误信息: $errorMessage');
+
+      // 注意：我们不在这里发送错误事件，而是让 _handleIsolateClientEvent 处理
+      // 这样可以避免重复发送错误事件
+      // 错误事件已经通过 IsolateSocketEvent 发送，会在 _handleIsolateClientEvent 中处理
     }
+
+    // 记录状态变化
+    debugPrint('SocketClient: 状态变化 - Isolate状态: $isolateStatus, 客户端状态: $clientStatus');
   }
 
   /// 释放资源

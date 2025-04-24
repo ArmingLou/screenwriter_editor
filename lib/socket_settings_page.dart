@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'socket_service.dart';
+import 'socket_service_factory.dart';
+import 'isolate_socket_service_adapter.dart';
 
 class SocketSettingsPage extends StatefulWidget {
   const SocketSettingsPage({Key? key}) : super(key: key);
@@ -13,7 +14,7 @@ class SocketSettingsPage extends StatefulWidget {
 class _SocketSettingsPageState extends State<SocketSettingsPage> {
   final TextEditingController _portController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final SocketService _socketService = SocketService();
+  final _socketService = SocketServiceFactory.getSocketService();
   List<String> _ipAddresses = [];
   bool _isLoading = true;
   bool _autoStart = false; // 是否在应用启动时自动启动服务器
@@ -191,7 +192,7 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
 
   // 状态卡片
   Widget _buildStatusCard() {
-    return ValueListenableBuilder<SocketServiceStatus>(
+    return ValueListenableBuilder(
       valueListenable: _socketService.status,
       builder: (context, status, child) {
         Color statusColor;
@@ -340,7 +341,7 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
                         ],
                       ),
                     ),
-                    ValueListenableBuilder<SocketServiceStatus>(
+                    ValueListenableBuilder(
                       valueListenable: _socketService.status,
                       builder: (context, status, child) {
                         final isRunning = status == SocketServiceStatus.running;
@@ -466,26 +467,78 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
     );
   }
 
+  // 模拟服务器异常停止
+  void _simulateServerError() {
+    if (_socketService.status.value != SocketServiceStatus.running) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('服务器未运行，无法模拟异常停止'),
+          duration: Duration(seconds: 1),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // 调用模拟服务器异常停止方法
+    try {
+      // 尝试调用 simulateServerError 方法
+      final adapter = _socketService as dynamic;
+      adapter.simulateServerError('模拟服务器异常停止测试');
+
+      // 不显示成功发送事件的提示，因为 main.dart 中的事件监听器会显示实际的错误提示
+      // 这样可以避免显示两次提示
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('模拟服务器异常停止失败: $e'),
+          duration: const Duration(seconds: 1),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   // 底部按钮
   Widget _buildBottomButtons() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        ElevatedButton(
-          onPressed: _saveSettings,
-          child: const Text('保存设置'),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            ElevatedButton(
+              onPressed: _saveSettings,
+              child: const Text('保存设置'),
+            ),
+            ValueListenableBuilder(
+              valueListenable: _socketService.status,
+              builder: (context, status, child) {
+                final isRunning = status == SocketServiceStatus.running;
+                return ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isRunning ? Colors.red : Colors.green,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: _toggleServer,
+                  child: Text(isRunning ? '停止服务器' : '启动服务器'),
+                );
+              },
+            ),
+          ],
         ),
-        ValueListenableBuilder<SocketServiceStatus>(
+        const SizedBox(height: 8),
+        // 测试按钮
+        ValueListenableBuilder(
           valueListenable: _socketService.status,
           builder: (context, status, child) {
             final isRunning = status == SocketServiceStatus.running;
-            return ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: isRunning ? Colors.red : Colors.green,
-                foregroundColor: Colors.white,
+            return Visibility(
+              visible: isRunning,
+              child: TextButton(
+                onPressed: _simulateServerError,
+                child: const Text('测试服务器异常停止'),
               ),
-              onPressed: _toggleServer,
-              child: Text(isRunning ? '停止服务器' : '启动服务器'),
             );
           },
         ),

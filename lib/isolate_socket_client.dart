@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:isolate';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -261,24 +262,40 @@ class IsolateSocketClient {
     // 等待连接结果，设置超时
     try {
       return await _connectionCompleter!.future.timeout(
-        const Duration(seconds: 10),
+        const Duration(seconds: 3), // 减少超时时间，因为连接拒绝错误会立即被捕获
         onTimeout: () {
-          errorMessage = '连接超时';
-          status.value = IsolateSocketStatus.error;
-          _eventController.add(IsolateSocketEvent(
-            type: IsolateSocketEventType.error,
-            errorMessage: '连接超时',
-          ));
+          // 只有当状态不是错误时才更新状态和发送错误事件
+          // 这样可以避免重复发送错误事件
+          if (status.value != IsolateSocketStatus.error) {
+            errorMessage = '连接超时，服务器可能未响应';
+            status.value = IsolateSocketStatus.error;
+            _eventController.add(IsolateSocketEvent(
+              type: IsolateSocketEventType.error,
+              errorMessage: '连接超时，服务器可能未响应',
+            ));
+
+            // 确保 UI 更新
+            debugPrint('连接超时，状态已更新为错误');
+          }
+
           return false;
         },
       );
     } catch (e) {
-      errorMessage = e.toString();
-      status.value = IsolateSocketStatus.error;
-      _eventController.add(IsolateSocketEvent(
-        type: IsolateSocketEventType.error,
-        errorMessage: e.toString(),
-      ));
+      // 只有当状态不是错误时才更新状态和发送错误事件
+      // 这样可以避免重复发送错误事件
+      if (status.value != IsolateSocketStatus.error) {
+        errorMessage = e.toString();
+        status.value = IsolateSocketStatus.error;
+        _eventController.add(IsolateSocketEvent(
+          type: IsolateSocketEventType.error,
+          errorMessage: e.toString(),
+        ));
+
+        // 确保 UI 更新
+        debugPrint('连接错误: $e，状态已更新为错误');
+      }
+
       return false;
     }
   }
@@ -532,11 +549,121 @@ class IsolateSocketClient {
             final wsUrl = 'ws://$host:$port';
             log('正在连接到 $wsUrl');
 
-            // 创建 WebSocket 连接
-            channel = IOWebSocketChannel.connect(
-              Uri.parse(wsUrl),
-              pingInterval: const Duration(seconds: 30),
+            // 检查 IP 地址是否为本地回环地址
+            if (host == '127.0.0.1' || host == 'localhost') {
+              log('警告：正在尝试连接到本地回环地址，这可能无法在移动设备上正常工作');
+            }
+
+            // 创建 WebSocket 连接，添加超时处理
+            // 使用更详细的日志记录
+            log('开始创建 WebSocket 连接...');
+
+            // 使用 IOWebSocketChannel.connect
+            log('使用 IOWebSocketChannel.connect 创建连接');
+
+            // 添加更多连接选项
+            final uri = Uri.parse(wsUrl);
+            log('连接 URI: $uri');
+            log('主机: ${uri.host}, 端口: ${uri.port}');
+
+            // 设置一个标志，用于检测是否收到了服务器的响应
+            bool receivedResponse = false;
+
+            // 使用更简单的连接方式
+            try {
+              channel = IOWebSocketChannel.connect(
+                uri,
+                pingInterval: const Duration(seconds: 30),
+                headers: {
+                  'Connection': 'Upgrade',
+                  'Upgrade': 'websocket',
+                },
+              );
+            } catch (e) {
+              // 立即处理连接错误
+              log('WebSocket 连接失败: $e');
+
+              // 构建友好的错误消息
+              String errorMsg = '连接失败';
+              if (e.toString().contains('Connection refused')) {
+                errorMsg = '服务器可能未启动';
+              } else if (e.toString().contains('Network is unreachable')) {
+                errorMsg = '网络不可达: 请检查网络连接和服务器地址';
+              } else {
+                errorMsg = '连接失败: ${e.toString()}';
+              }
+
+              // 更新状态为错误
+              updateStatus(IsolateSocketStatus.error);
+
+              // 发送错误到主线程（只发送一次）
+              sendError(errorMsg);
+
+              // 注意：我们不再发送额外的错误事件
+              // 错误已经通过 sendError 函数发送，会在主线程中处理
+
+              // 直接返回，不执行后续代码
+              return;
+            }
+
+            // 确保 channel 不为空
+            if (channel == null) {
+              throw Exception('WebSocket 连接创建失败');
+            }
+
+            // 设置一个监听器，用于检测服务器的响应
+            final responseCompleter = Completer<bool>();
+            final subscription = channel!.stream.listen(
+              (message) {
+                log('收到服务器响应: $message');
+                receivedResponse = true;
+                if (!responseCompleter.isCompleted) {
+                  responseCompleter.complete(true);
+                }
+              },
+              onError: (error) {
+                log('连接错误: $error');
+                if (!responseCompleter.isCompleted) {
+                  responseCompleter.completeError(error);
+                }
+              },
+              onDone: () {
+                log('连接已关闭');
+                if (!responseCompleter.isCompleted) {
+                  responseCompleter.complete(false);
+                }
+              },
             );
+
+            // 发送一个初始消息来验证连接是否真正建立
+            log('发送初始消息验证连接...');
+            channel!.sink.add(jsonEncode({
+              'type': 'auth',
+              'password': password ?? '',
+            }));
+
+            // 使用同步延迟，确保连接是真实的
+            final startTime = DateTime.now();
+            while (DateTime.now().difference(startTime).inMilliseconds < 1000 && !receivedResponse) {
+              // 简单的延迟
+            }
+
+            // 如果没有收到响应，抛出异常
+            if (!receivedResponse) {
+              // 取消订阅
+              subscription.cancel();
+
+              // 关闭连接
+              channel!.sink.close();
+
+              // 抛出异常
+              throw Exception('连接超时，未收到服务器响应，服务器可能未启动');
+            }
+
+            // 取消临时订阅
+            subscription.cancel();
+
+            log('成功创建 WebSocket 连接');
 
             // 设置消息监听
             channel!.stream.listen(
@@ -552,8 +679,13 @@ class IsolateSocketClient {
               },
               onError: (error) {
                 log('WebSocket 错误: $error');
-                sendError('WebSocket 错误: $error');
+
+                // 更新状态为错误
                 updateStatus(IsolateSocketStatus.error);
+
+                // 发送错误到主线程（只发送一次）
+                sendError('WebSocket 错误: $error');
+
                 channel = null;
               },
             );
@@ -575,10 +707,25 @@ class IsolateSocketClient {
                 'password': password,
               }));
             }
-          } catch (e) {
+          } catch (e, stackTrace) {
             log('连接错误: $e');
-            sendError('连接错误: $e');
+            log('堆栈跟踪: $stackTrace');
+
+            // 提供更详细的错误信息
+            String errorMsg = '连接错误: $e';
+            if (e is SocketException) {
+              if (e.message.contains('Connection refused')) {
+                errorMsg = '连接被拒绝: 服务器可能未启动或端口错误 (${e.port})';
+              } else if (e.message.contains('Network is unreachable')) {
+                errorMsg = '网络不可达: 请检查网络连接和服务器地址 (${e.address})';
+              }
+            }
+
+            // 更新状态为错误
             updateStatus(IsolateSocketStatus.error);
+
+            // 发送错误到主线程（只发送一次）
+            sendError(errorMsg);
           }
           break;
 

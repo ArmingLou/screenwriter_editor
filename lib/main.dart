@@ -11,10 +11,11 @@ import 'package:flutter_quill/quill_delta.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:path/path.dart' as path;
-import 'package:screenwriter_editor/socket_service.dart';
+import 'package:screenwriter_editor/socket_service_factory.dart';
 import 'package:screenwriter_editor/socket_settings_page.dart';
-import 'package:screenwriter_editor/socket_client.dart';
 import 'package:screenwriter_editor/socket_client_page.dart';
+import 'package:screenwriter_editor/isolate_socket_service_adapter.dart';
+import 'package:screenwriter_editor/isolate_socket_client_adapter.dart';
 import 'package:screenwriter_editor/statis.dart';
 import 'package:screenwriter_editor/stats_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -136,8 +137,8 @@ class _EditorScreenState extends State<EditorScreen> {
   Color _editIconColor = Colors.black; // 编辑图标颜色
 
   // Socket服务相关变量
-  final SocketService _socketService = SocketService();
-  StreamSubscription<SocketEvent>? _socketEventSubscription;
+  final _socketService = SocketServiceFactory.getSocketService();
+  StreamSubscription? _socketEventSubscription;
 
   // 服务端菜单状态更新函数，用于在客户端连接/断开时刷新菜单
   StateSetter? _socketServerMenuState;
@@ -828,8 +829,20 @@ class _EditorScreenState extends State<EditorScreen> {
         case SocketEventType.fetch:
           // 发送当前编辑器内容给客户端
           final content = _docText();
-          _socketService.sendContent(content, event.socket);
-          _showInfo('已将内容发送给远程客户端');
+
+          // 在 Isolate 模式下，event.content 包含客户端 IP 地址
+          if (event.content != null && event.content!.isNotEmpty) {
+            // 使用 sendContentToClient 方法通过 IP 地址发送内容
+            _socketService.sendContentToClient(event.content!, content);
+            _showInfo('已将内容发送给远程客户端');
+          } else if (event.socket != null) {
+            // 兼容旧版本，如果有 socket 对象，则使用它
+            _socketService.sendContent(content, event.socket);
+            _showInfo('已将内容发送给远程客户端');
+          } else {
+            _showError('无法发送内容：客户端信息不完整');
+            debugPrint('警告: 无法发送内容，客户端信息不完整');
+          }
           break;
         case SocketEventType.push:
           // 将客户端发送的内容替换到编辑器
@@ -837,35 +850,93 @@ class _EditorScreenState extends State<EditorScreen> {
             _replaceTextFromRemote(event.content!);
           }
           break;
-        case SocketEventType.clientConnected:
-        case SocketEventType.clientDisconnected:
-        case SocketEventType.clientBanned:
-        case SocketEventType.blacklistChanged:
-          // 当有客户端连接、断开、被禁止或黑名单变化时，刷新服务端菜单
-          // 使用全局变量记录菜单状态
-          if (_socketServerMenuState != null) {
-            // 如果菜单已打开，则刷新菜单
-            // 使用 scheduleMicrotask 确保在 UI 线程中执行
-            scheduleMicrotask(() {
-              // 在调用setState前检查组件是否仍然挂载，以及_socketServerMenuState是否仍然有效
-              if (mounted && _socketServerMenuState != null) {
-                try {
-                  _socketServerMenuState!(() {});
-                } catch (e) {
-                  // 如果出现异常，清空状态更新函数引用
-                  _socketServerMenuState = null;
-                }
+        case SocketEventType.auth:
+          // 客户端认证事件
+          // 显示提示信息
+          scheduleMicrotask(() {
+            if (mounted && event.content != null) {
+              // 解析认证结果和客户端 IP
+              final parts = event.content!.split(':');
+              final success = parts[0] == 'success';
+              final clientIP = parts.length > 1 ? parts[1] : '未知客户端';
+
+              if (success) {
+                _showInfo('客户端认证成功: $clientIP');
+              } else {
+                _showError('客户端认证失败: $clientIP');
               }
-            });
-          }
+            }
+          });
+          break;
+
+        case SocketEventType.clientConnected:
+          // 客户端连接事件
+          // 显示提示信息
+          scheduleMicrotask(() {
+            if (mounted) {
+              final clientIP = event.content ?? '未知客户端';
+              _showInfo('客户端已连接: $clientIP');
+            }
+          });
+
+          // 刷新服务端菜单
+          _refreshServerMenu();
+          break;
+
+        case SocketEventType.clientDisconnected:
+          // 客户端断开连接事件
+          // 显示提示信息
+          scheduleMicrotask(() {
+            if (mounted) {
+              final clientIP = event.content ?? '未知客户端';
+              _showInfo('客户端已断开连接: $clientIP');
+            }
+          });
+
+          // 刷新服务端菜单
+          _refreshServerMenu();
+          break;
+
+        case SocketEventType.clientBanned:
+          // 客户端被禁止事件
+          // 显示提示信息
+          scheduleMicrotask(() {
+            if (mounted) {
+              final clientIP = event.content ?? '未知客户端';
+              _showInfo('客户端已被禁止: $clientIP');
+            }
+          });
+
+          // 刷新服务端菜单
+          _refreshServerMenu();
+          break;
+
+        case SocketEventType.blacklistChanged:
+          // 黑名单变化事件
+          // 显示提示信息
+          scheduleMicrotask(() {
+            if (mounted) {
+              // 这里不显示具体的黑名单内容，因为可能是添加也可能是移除
+              // 具体的添加和移除操作已经在 clientBanned 事件中处理
+              _showInfo('黑名单已更新');
+            }
+          });
+
+          // 刷新服务端菜单
+          _refreshServerMenu();
           break;
         case SocketEventType.serverError:
+          // 记录错误日志
+          debugPrint('收到服务器错误事件: ${event.content}');
+
+          // 显示错误信息
           scheduleMicrotask(() {
             if (mounted) {
               final errorMsg = event.content ?? '服务器发生异常';
               _showError('服务器异常停止: $errorMsg');
             }
           });
+
           // 如果菜单正在显示，则关闭菜单
           if (_socketServerMenuState != null) {
             // 使用 scheduleMicrotask 确保在 UI 线程中执行
@@ -884,19 +955,21 @@ class _EditorScreenState extends State<EditorScreen> {
                   _socketServMenuContext = null;
                   _socketServerMenuState = null;
                 }
+              } else {
+                // 如果菜单上下文为空，只清除状态更新函数
+                debugPrint('菜单上下文为空，无法关闭菜单');
+                _socketServerMenuState = null;
               }
             });
           } else {
-            debugPrint('菜单上下文为空，无法关闭菜单');
-            // 确保清除状态更新函数
-            _socketServerMenuState = null;
+            debugPrint('菜单状态更新函数为空，无需关闭菜单');
           }
           break;
       }
     });
 
     // 监听Socket客户端事件
-    SocketClient().events.listen((event) {
+    SocketServiceFactory.getSocketClient().events.listen((event) {
       if (event.type == SocketClientEventType.content) {
         if (event.content != null) {
           // 收到远程内容，替换到当前编辑器
@@ -949,6 +1022,26 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
+  // 刷新服务端菜单
+  void _refreshServerMenu() {
+    // 使用全局变量记录菜单状态
+    if (_socketServerMenuState != null) {
+      // 如果菜单已打开，则刷新菜单
+      // 使用 scheduleMicrotask 确保在 UI 线程中执行
+      scheduleMicrotask(() {
+        // 在调用setState前检查组件是否仍然挂载，以及_socketServerMenuState是否仍然有效
+        if (mounted && _socketServerMenuState != null) {
+          try {
+            _socketServerMenuState!(() {});
+          } catch (e) {
+            // 如果出现异常，清空状态更新函数引用
+            _socketServerMenuState = null;
+          }
+        }
+      });
+    }
+  }
+
   // 显示Socket服务端操作菜单
   Future<void> _showSocketServerMenu(BuildContext context) async {
     // 检查服务器状态，如果不是运行状态，则不显示菜单
@@ -961,11 +1054,16 @@ class _EditorScreenState extends State<EditorScreen> {
     final ipAddresses = _socketService.getLocalIpAddresses();
     final port = _socketService.currentPort;
 
-    // 获取已连接的客户端信息
-    final connectedClients = _socketService.getConnectedClients();
+    // 获取已连接的客户端列表
+    final List<Map<String, dynamic>> connectedClients = _socketService.getConnectedClients();
+    debugPrint('服务器菜单: 已连接客户端数量: ${connectedClients.length}');
+    for (var client in connectedClients) {
+      debugPrint('  客户端: ${client['ip']}');
+    }
 
     // 获取已禁止的客户端列表
-    final bannedIPs = _socketService.getBannedIPs();
+    final List<String> bannedIPs = _socketService.getBannedIPs();
+    debugPrint('服务器菜单: 已禁止客户端数量: ${bannedIPs.length}');
 
     // 获取密码信息
     SharedPreferences.getInstance().then((prefs) async {
@@ -977,17 +1075,18 @@ class _EditorScreenState extends State<EditorScreen> {
         _socketServMenuContext = context;
 
         // 显示菜单
-        await showModalBottomSheet(
-            context: context,
-            isScrollControlled: true, // 允许内容滚动
-            builder: (context) => StatefulBuilder(
-                    builder: (BuildContext context, StateSetter setState) {
+          await showModalBottomSheet(
+              context: context,
+              isScrollControlled: true, // 允许内容滚动
+              builder: (context) => StatefulBuilder(
+                      builder: (BuildContext context, StateSetter setState) {
                   // 存储状态更新函数，供事件监听器使用
                   _socketServerMenuState = setState;
 
-                  // 获取最新的客户端列表和黑名单
-                  final connectedClients = _socketService.getConnectedClients();
-                  final bannedIPs = _socketService.getBannedIPs();
+                  // 获取已连接的客户端列表
+                  final List<Map<String, dynamic>> connectedClients = _socketService.getConnectedClients();
+                  // 获取已禁止的客户端列表
+                  final List<String> bannedIPs = _socketService.getBannedIPs();
 
                   return Container(
                     padding: const EdgeInsets.all(16),
@@ -1098,32 +1197,28 @@ class _EditorScreenState extends State<EditorScreen> {
                                           // 先关闭菜单，再断开连接，避免异步问题
                                           Navigator.pop(context);
                                           // 使用 Future.microtask 确保在菜单关闭后再断开连接
-                                          Future.microtask(() async {
-                                            final success = await _socketService
-                                                .disconnectClient(
-                                                    client['socket']
-                                                        as WebSocket);
+                                          Future.microtask(() {
+                                            // 在新的 Isolate 架构中，我们使用 IP 地址而不是 WebSocket 对象
+                                            final clientIP = client['ip'] as String;
+                                            // 使用新的 disconnectClientByIP 方法
+                                            _socketService.disconnectClientByIP(clientIP);
                                             if (mounted) {
-                                              if (success) {
-                                                _showInfo('已断开客户端连接');
-                                                // 刷新菜单
-                                                // 使用setState刷新界面，而不是直接调用_showSocketServerMenu
-                                                setState(() {});
-                                                // 延迟一下再显示菜单
-                                                // 使用定时器而不是 Future.delayed，避免 BuildContext 问题
-                                                Timer(
-                                                    const Duration(
-                                                        milliseconds: 300),
-                                                    () async {
-                                                  if (mounted) {
-                                                    // 使用当前的 context
-                                                    await _showSocketServerMenu(
-                                                        this.context);
-                                                  }
-                                                });
-                                              } else {
-                                                _showError('断开客户端连接失败');
-                                              }
+                                              _showInfo('已断开客户端连接');
+                                              // 刷新菜单
+                                              // 使用setState刷新界面，而不是直接调用_showSocketServerMenu
+                                              setState(() {});
+                                              // 延迟一下再显示菜单
+                                              // 使用定时器而不是 Future.delayed，避免 BuildContext 问题
+                                              Timer(
+                                                  const Duration(
+                                                      milliseconds: 300),
+                                                  () async {
+                                                if (mounted) {
+                                                  // 使用当前的 context
+                                                  await _showSocketServerMenu(
+                                                      this.context);
+                                                }
+                                              });
                                             }
                                           });
                                         },
@@ -1137,31 +1232,27 @@ class _EditorScreenState extends State<EditorScreen> {
                                           // 先关闭菜单，再禁止客户端，避免异步问题
                                           Navigator.pop(context);
                                           // 使用 Future.microtask 确保在菜单关闭后再禁止客户端
-                                          Future.microtask(() async {
-                                            final success = await _socketService
-                                                .banClient(client['socket']
-                                                    as WebSocket);
+                                          Future.microtask(() {
+                                            // 在新的 Isolate 架构中，我们使用 IP 地址而不是 WebSocket 对象
+                                            final clientIP = client['ip'] as String;
+                                            _socketService.banClientIP(clientIP);
                                             if (mounted) {
-                                              if (success) {
-                                                _showInfo('已禁止客户端连接');
-                                                // 刷新菜单
-                                                // 使用setState刷新界面，而不是直接调用_showSocketServerMenu
-                                                setState(() {});
-                                                // 延迟一下再显示菜单
-                                                // 使用定时器而不是 Future.delayed，避免 BuildContext 问题
-                                                Timer(
-                                                    const Duration(
-                                                        milliseconds: 300),
-                                                    () async {
-                                                  if (mounted) {
-                                                    // 使用当前的 context
-                                                    await _showSocketServerMenu(
-                                                        this.context);
-                                                  }
-                                                });
-                                              } else {
-                                                _showError('禁止客户端连接失败');
-                                              }
+                                              _showInfo('已禁止客户端连接');
+                                              // 刷新菜单
+                                              // 使用setState刷新界面，而不是直接调用_showSocketServerMenu
+                                              setState(() {});
+                                              // 延迟一下再显示菜单
+                                              // 使用定时器而不是 Future.delayed，避免 BuildContext 问题
+                                              Timer(
+                                                  const Duration(
+                                                      milliseconds: 300),
+                                                  () async {
+                                                if (mounted) {
+                                                  // 使用当前的 context
+                                                  await _showSocketServerMenu(
+                                                      this.context);
+                                                }
+                                              });
                                             }
                                           });
                                         },
@@ -1193,29 +1284,24 @@ class _EditorScreenState extends State<EditorScreen> {
                                       Navigator.pop(context);
                                       // 使用 Future.microtask 确保在菜单关闭后再移除黑名单
                                       Future.microtask(() {
-                                        final success = _socketService
-                                            .removeFromBlacklist(ip);
+                                        _socketService.unbanClientIP(ip);
                                         if (mounted) {
-                                          if (success) {
-                                            _showInfo('已从黑名单中移除 $ip');
-                                            // 刷新菜单
-                                            // 使用setState刷新界面，而不是直接调用_showSocketServerMenu
-                                            setState(() {});
-                                            // 延迟一下再显示菜单
-                                            // 使用定时器而不是 Future.delayed，避免 BuildContext 问题
-                                            Timer(
-                                                const Duration(
-                                                    milliseconds: 300),
-                                                () async {
-                                              if (mounted) {
-                                                // 使用当前的 context
-                                                await _showSocketServerMenu(
-                                                    this.context);
-                                              }
-                                            });
-                                          } else {
-                                            _showError('从黑名单中移除失败');
-                                          }
+                                          _showInfo('已从黑名单中移除 $ip');
+                                          // 刷新菜单
+                                          // 使用setState刷新界面，而不是直接调用_showSocketServerMenu
+                                          setState(() {});
+                                          // 延迟一下再显示菜单
+                                          // 使用定时器而不是 Future.delayed，避免 BuildContext 问题
+                                          Timer(
+                                              const Duration(
+                                                  milliseconds: 300),
+                                              () async {
+                                            if (mounted) {
+                                              // 使用当前的 context
+                                              await _showSocketServerMenu(
+                                                  this.context);
+                                            }
+                                          });
                                         }
                                       });
                                     },
@@ -1258,7 +1344,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
   // 显示Socket客户端操作菜单
   void _showSocketClientMenu(BuildContext context) {
-    final socketClient = SocketClient();
+    final socketClient = SocketServiceFactory.getSocketClient();
     final server = socketClient.currentServer;
 
     // 保存菜单上下文，用于在连接断开时关闭菜单
@@ -2951,7 +3037,7 @@ Metadata: {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  ValueListenableBuilder<SocketServiceStatus>(
+                  ValueListenableBuilder(
                     valueListenable: _socketService.status,
                     builder: (context, status, _) {
                       final isRunning = status == SocketServiceStatus.running;
@@ -2995,8 +3081,8 @@ Metadata: {
                     },
                   ),
                   // 远程同步客户端按钮
-                  ValueListenableBuilder<SocketClientStatus>(
-                    valueListenable: SocketClient().status,
+                  ValueListenableBuilder(
+                    valueListenable: SocketServiceFactory.getSocketClient().status,
                     builder: (context, status, _) {
                       final isConnected =
                           status == SocketClientStatus.connected;
