@@ -46,9 +46,9 @@ class SocketService with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
   }
 
-  final checkDuaration = Duration(seconds: 30);
+  final checkDuaration = Duration(seconds: 40); // 预期客户端每 40 秒必须有任何形式的 请求，否则主动断开客户端。
   final pingpongDuaration =
-      Duration(seconds: 30); // 经调试，即使正常连接，ping - pong 时间差 iOS 可能都高达 20多秒
+      Duration(seconds: 40); // 经调试，即使正常连接，ping - pong 时间差 iOS 可能都高达 20多秒
 
   // 服务器实例
   HttpServer? _server;
@@ -324,6 +324,10 @@ class SocketService with WidgetsBindingObserver {
       try {
         final Map<String, dynamic> data = jsonDecode(message);
         final String type = data['type'];
+        
+        // 取消该客户端的 ping 超时计时器
+          _pingTimers[socket]?.cancel();
+          _pingTimers.remove(socket);
 
         // 处理认证请求
         if (type == 'auth') {
@@ -380,9 +384,9 @@ class SocketService with WidgetsBindingObserver {
           final int roundTripTime =
               DateTime.now().millisecondsSinceEpoch - timestamp;
 
-          // 取消该客户端的 ping 超时计时器
-          _pingTimers[socket]?.cancel();
-          _pingTimers.remove(socket);
+          // // 取消该客户端的 ping 超时计时器
+          // _pingTimers[socket]?.cancel();
+          // _pingTimers.remove(socket);
 
           // 取消该客户端的 ping 超时计时器表示已响应 ping
 
@@ -603,13 +607,13 @@ class SocketService with WidgetsBindingObserver {
 
           // 尝试发送一个 ping 消息来检测连接是否仍然有效
           try {
-            final timestamp = DateTime.now().millisecondsSinceEpoch;
+            // final timestamp = DateTime.now().millisecondsSinceEpoch;
 
-            // 发送 ping 消息
-            socket.add(jsonEncode({
-              'type': 'ping',
-              'timestamp': timestamp,
-            }));
+            // // 发送 ping 消息
+            // socket.add(jsonEncode({
+            //   'type': 'ping',
+            //   'timestamp': timestamp,
+            // }));
 
             // 设置计时器表示该客户端有一个待处理的 ping
 
