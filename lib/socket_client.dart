@@ -429,7 +429,12 @@ class SocketClient {
           // 处理 ping 消息，立即回复 pong 消息
           final int timestamp = data['timestamp'] ?? 0;
           _sendPongResponse(timestamp);
-          debugPrint('收到 ping 消息，已回复 pong 响应，时间戳: $timestamp');
+          debugPrint('收到服务端 ping 消息，已回复 pong 响应，时间戳: $timestamp');
+        } else if (type == 'pong') {
+          final int timestamp = data['timestamp'] ?? 0;
+          final int roundTripTime =
+              DateTime.now().millisecondsSinceEpoch - timestamp;
+          debugPrint('收到服务端 pong 响应，往返时间: $roundTripTime ms');
         }
       } catch (e) {
         debugPrint('Error parsing message: $e');

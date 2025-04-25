@@ -387,6 +387,14 @@ class SocketService with WidgetsBindingObserver {
 
           debugPrint(
               '收到客户端 pong 响应: ${_clientIPs[socket] ?? "未知IP"}, 往返时间: $roundTripTime ms');
+        } else if (type == 'ping') {
+          // 处理 ping 消息，立即回复 pong 消息
+          final int timestamp = data['timestamp'] ?? 0;
+           socket.add(jsonEncode({
+            'type': 'pong',
+            'timestamp': timestamp,
+          }));
+          debugPrint('收到客户端 ping 消息，已回复 pong 响应，时间戳: $timestamp');
         }
       } catch (e) {
         // 使用日志而非直接打印
@@ -483,6 +491,7 @@ class SocketService with WidgetsBindingObserver {
   /// 应用生命周期变化回调
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 主要针对 ios 的 websocket
     switch (state) {
       case AppLifecycleState.resumed:
         // 应用恢复到前台
@@ -522,7 +531,7 @@ class SocketService with WidgetsBindingObserver {
     }
   }
 
-  /// 强制检查服务器状态，特别用于从后台恢复时
+  /// 强制检查服务器状态，特别用于从后台恢复时。 主要针对 IOS 。
   Future<void> _forceCheckServerStatus() async {
     // 如果服务器实例为空，触发关闭事件
     if (_server == null) {
