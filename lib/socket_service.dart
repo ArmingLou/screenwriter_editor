@@ -48,7 +48,7 @@ class SocketService with WidgetsBindingObserver {
 
   final checkDuaration = Duration(seconds: 30);
   final pingpongDuaration =
-      Duration(seconds: 25); // 经调试，即使正常连接，ping - pong 时间差可能都高达 20多秒
+      Duration(seconds: 30); // 经调试，即使正常连接，ping - pong 时间差 iOS 可能都高达 20多秒
 
   // 服务器实例
   HttpServer? _server;
@@ -158,23 +158,24 @@ class SocketService with WidgetsBindingObserver {
         },
       );
 
-      // 添加定期检查服务器状态
-      _serverErrorSubscription =
-          Stream.periodic(checkDuaration).listen(
-        (_) async {
-          // 如果应用在前台，执行定期检查
-          if (_isAppInForeground &&
-              status.value == SocketServiceStatus.running) {
-            // 使用强制检查方法
-            await _forceCheckServerStatus();
-          }
-        },
-        onError: (error, stackTrace) {
-          // 定期检查流发生错误
-          debugPrint('Periodic check error: $error');
-          // 不需要处理，因为这只是定期检查的错误，不影响服务器本身
-        },
-      );
+      // if (Platform.isIOS) {
+        // 添加定期检查服务器状态
+        _serverErrorSubscription = Stream.periodic(checkDuaration).listen(
+          (_) async {
+            // 如果应用在前台，执行定期检查
+            if (_isAppInForeground &&
+                status.value == SocketServiceStatus.running) {
+              // 使用强制检查方法
+              await _forceCheckServerStatus();
+            }
+          },
+          onError: (error, stackTrace) {
+            // 定期检查流发生错误
+            debugPrint('Periodic check error: $error');
+            // 不需要处理，因为这只是定期检查的错误，不影响服务器本身
+          },
+        );
+      // }
 
       status.value = SocketServiceStatus.running;
       return true;
@@ -390,7 +391,7 @@ class SocketService with WidgetsBindingObserver {
         } else if (type == 'ping') {
           // 处理 ping 消息，立即回复 pong 消息
           final int timestamp = data['timestamp'] ?? 0;
-           socket.add(jsonEncode({
+          socket.add(jsonEncode({
             'type': 'pong',
             'timestamp': timestamp,
           }));
@@ -491,7 +492,11 @@ class SocketService with WidgetsBindingObserver {
   /// 应用生命周期变化回调
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // 主要针对 ios 的 websocket
+    // 判断平台
+    // if (!Platform.isIOS) {
+    //   return;
+    // }
+
     switch (state) {
       case AppLifecycleState.resumed:
         // 应用恢复到前台
@@ -531,7 +536,7 @@ class SocketService with WidgetsBindingObserver {
     }
   }
 
-  /// 强制检查服务器状态，特别用于从后台恢复时。 主要针对 IOS 。
+  /// 强制检查服务器状态，特别用于从后台恢复时。 
   Future<void> _forceCheckServerStatus() async {
     // 如果服务器实例为空，触发关闭事件
     if (_server == null) {
@@ -614,7 +619,7 @@ class SocketService with WidgetsBindingObserver {
               // 如果 3 秒后客户端仍然存在，认为客户端已断开连接
               if (_clients.contains(socket)) {
                 debugPrint(
-                    '客户端 ${_clientIPs[socket] ?? "未知IP"} 未在 3 秒内响应 ping，认为已断开连接');
+                    '客户端 ${_clientIPs[socket] ?? "未知IP"} 未在 30 秒内响应 ping，认为已断开连接');
 
                 // 由于这是在异步的 Timer 回调中，我们需要直接处理断开连接的客户端
                 // 而不是添加到 disconnectedSockets 列表中
