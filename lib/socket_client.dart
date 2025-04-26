@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:web_socket_channel/io.dart';
+import 'auth_utils.dart';
 
 /// 定义Socket客户端的状态
 enum SocketClientStatus {
@@ -509,6 +510,75 @@ class SocketClient with WidgetsBindingObserver {
     }
   }
 
+  // 移除了获取盐值的方法，改为使用固定盐值
+
+  /// 从 WebSocketException 的错误消息中提取 HTTP 状态码
+  ///
+  /// 例如，从 "Connection to 'http://example.com' was not upgraded to websocket, HTTP status code: 403" 中提取 403
+  ///
+  /// 返回提取到的状态码，如果无法提取则返回 null
+  int? _extractStatusCodeFromError(String errorMessage) {
+    // 首先尝试匹配最精确的模式
+
+    // 1. 匹配 "HTTP status code: XXX" 模式，这是最常见的格式
+    final statusCodeRegex = RegExp(r'HTTP status code: (\d+)');
+    final statusCodeMatch = statusCodeRegex.firstMatch(errorMessage);
+    if (statusCodeMatch != null && statusCodeMatch.groupCount >= 1) {
+      try {
+        final int statusCode = int.parse(statusCodeMatch.group(1)!);
+        if (statusCode >= 100 && statusCode < 600) {
+          return statusCode;
+        }
+      } catch (e) {
+        debugPrint('Error parsing status code: $e');
+      }
+    }
+
+    // 2. 尝试其他可能的模式，按优先级排序
+    final List<RegExp> patterns = [
+      // 匹配 "Status code XXX" 或 "status code XXX" 模式
+      RegExp(r'[sS]tatus code[:]?\s+(\d+)'),
+      // 匹配 "HTTP XXX" 模式，但避免匹配 URL 中的 "http://"
+      RegExp(r'HTTP\s+(\d+)'),
+      // 匹配 "code: XXX" 或 "code XXX" 模式
+      RegExp(r'code[:]?\s+(\d+)'),
+      // 匹配 "XXX Unauthorized" 或 "XXX Forbidden" 等 HTTP 状态描述
+      RegExp(r'(\d+)\s+(Unauthorized|Forbidden|Not Found|Internal Server Error)'),
+    ];
+
+    // 尝试每种模式
+    for (final RegExp pattern in patterns) {
+      final Match? match = pattern.firstMatch(errorMessage);
+      if (match != null && match.groupCount >= 1) {
+        try {
+          final int statusCode = int.parse(match.group(1)!);
+          // 只接受有效的 HTTP 状态码（100-599）
+          if (statusCode >= 100 && statusCode < 600) {
+            return statusCode;
+          }
+        } catch (e) {
+          debugPrint('Error parsing status code: $e');
+        }
+      }
+    }
+
+    // 如果错误消息包含特定的关键词，返回相应的状态码
+    if (errorMessage.toLowerCase().contains('unauthorized') ||
+        errorMessage.toLowerCase().contains('authentication failed')) {
+      return 401;
+    } else if (errorMessage.toLowerCase().contains('forbidden') ||
+               errorMessage.toLowerCase().contains('blacklist')) {
+      return 403;
+    } else if (errorMessage.toLowerCase().contains('not found')) {
+      return 404;
+    } else if (errorMessage.toLowerCase().contains('timeout')) {
+      return 408; // Request Timeout
+    }
+
+    // 无法提取状态码
+    return null;
+  }
+
   /// 完成连接过程（在主线程中调用）
   Future<bool> completeConnection() async {
     if (status.value != SocketClientStatus.connecting ||
@@ -518,45 +588,39 @@ class SocketClient with WidgetsBindingObserver {
 
     try {
       final server = currentServer!;
+
+      // 构建WebSocket URL
       final wsUrl = 'ws://${server.host}:${server.port}';
 
-      // 创建WebSocket连接
-      // 使用 HttpClient 先检查是否被禁止（403）
-      final httpClient = HttpClient();
-      httpClient.connectionTimeout = const Duration(seconds: 5);
+      // 准备连接
+      Uri uri = Uri.parse(wsUrl);
 
-      var forb = false;
-      try {
-        // 先发送 HTTP 请求检查服务器状态
-        final request = await httpClient
-            .getUrl(Uri.parse('http://${server.host}:${server.port}'));
-        final response = await request.close();
+      // 如果需要密码，准备认证头部
+      if (server.password != null && server.password!.isNotEmpty) {
+        // 使用固定盐值，客户端和服务端共享
+        final salt = AuthUtils.fixedSalt;
 
-        // 如果返回 403，表示客户端被禁止
-        if (response.statusCode == 403) {
-          forb = true;
-        }
+        // 生成时间戳
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
 
-        // 关闭响应流
-        await response.drain<void>();
-      } catch (e) {
-        // 如果是 403 错误，直接抛出
-        if (e.toString().contains('403')) {
-          forb = true;
-        }
-        // 其他 HTTP 错误可以忽略，因为服务器可能不支持 HTTP 请求
-        // 继续尝试 WebSocket 连接
-      } finally {
-        httpClient.close();
+        // 生成 token
+        final token = AuthUtils.generateToken(server.password!, salt, timestamp);
+
+        // 准备认证头部
+        final Map<String, String> headers = {
+          'Authorization': 'Bearer $token',
+          'X-Auth-Timestamp': timestamp.toString(),
+        };
+
+        // 创建带认证头部的WebSocket连接
+        _channel = IOWebSocketChannel.connect(
+          uri,
+          headers: headers,
+        );
+      } else {
+        // 创建WebSocket连接（不带认证头部）
+        _channel = IOWebSocketChannel.connect(uri);
       }
-
-      // 如果返回 403，表示客户端被禁止
-      if (forb) {
-        throw Exception('连接被服务器拒绝：您的 IP 地址已被禁止');
-      }
-
-      // 创建WebSocket连接
-      _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
 
       // 等待一下，确保连接已经完全建立
       // 这里增加超时检测，避免连接卡住
@@ -598,16 +662,21 @@ class SocketClient with WidgetsBindingObserver {
       // 创建认证完成的 Completer
       _authCompleter = Completer<bool>();
 
-      // 如果有密码，发送密码；如果没有，发送空密码
-      if (server.password != null && server.password!.isNotEmpty) {
-        _sendAuthRequest(server.password!);
-      } else {
-        _sendAuthRequest('');
+      // 认证现在在握手阶段完成，不需要发送单独的认证消息
+      // 直接完成认证 Completer
+      if (_authCompleter != null && !_authCompleter!.isCompleted) {
+        _authCompleter!.complete(true);
       }
 
       // 发送连接成功事件
       _eventController.add(SocketClientEvent(
         type: SocketClientEventType.connected,
+      ));
+
+      // 发送认证成功事件
+      _eventController.add(SocketClientEvent(
+        type: SocketClientEventType.auth,
+        content: 'success',
       ));
 
       // if (Platform.isIOS) {
@@ -628,32 +697,38 @@ class SocketClient with WidgetsBindingObserver {
         );
       // }
 
-      // 等待认证完成
-      try {
-        // 设置超时，避免无限等待
-        final authSuccess = await _authCompleter!.future.timeout(
-          const Duration(seconds: 10),
-          onTimeout: () {
-            debugPrint('认证超时');
-            return false;
-          },
-        );
-
-        // 如果认证失败，返回 false
-        if (!authSuccess) {
-          debugPrint('认证失败，连接过程未完成');
-          return false;
-        }
-
-        debugPrint('认证成功，连接过程完成');
-        return true;
-      } catch (e) {
-        debugPrint('等待认证过程中发生错误: $e');
-        return false;
-      }
+      debugPrint('连接成功，连接过程完成');
+      return true;
     } catch (e) {
       // 一般是 403 黑名单。 或者 _channel!.ready 失败。
       // 使用_handleError方法处理错误，避免重复触发错误事件
+      if(e.runtimeType == TimeoutException){
+        _handleError('连接超时');
+        return false;
+      } else if(e.runtimeType == WebSocketException){
+        // 尝试从 WebSocketException 的错误消息中解析 HTTP 状态码
+        final String errorMessage = e.toString();
+        debugPrint('WebSocketException: $errorMessage');
+
+        // 测试特定的错误消息格式
+        final testMessage = "WebSocketException: Connection to 'http://172.20.10.2:8080#' was not upgraded to websocket, HTTP status code: 403";
+        final testStatusCode = _extractStatusCodeFromError(testMessage);
+        debugPrint('测试消息提取的状态码: ${testStatusCode ?? "无法提取"}');
+
+        int? statusCode = _extractStatusCodeFromError(errorMessage);
+        debugPrint('提取到的 HTTP 状态码: ${statusCode ?? "无法提取"}');
+
+        if(statusCode == 401) {
+          _handleError('连接失败，密码错误');
+        } else if(statusCode == 403) {
+          _handleError('连接失败，您已被加入黑名单');
+        } else if(statusCode != null) {
+          _handleError('连接失败: HTTP $statusCode');
+        } else {
+          _handleError('连接失败: $errorMessage');
+        }
+        return false;
+      }
       _handleError(e.toString());
       return false;
     }
@@ -679,29 +754,7 @@ class SocketClient with WidgetsBindingObserver {
     // ));
   }
 
-  /// 发送认证请求
-  void _sendAuthRequest(String password) {
-    debugPrint('准备发送认证请求: 密码="$password", 密码长度=${password.length}');
-
-    if (_channel == null) {
-      debugPrint('无法发送认证请求: WebSocket通道为空');
-      return;
-    }
-
-    if (status.value != SocketClientStatus.connected) {
-      debugPrint('无法发送认证请求: 当前状态不是已连接 (${status.value})');
-      return;
-    }
-
-    final authRequest = jsonEncode({
-      'type': 'auth',
-      'password': password,
-    });
-
-    debugPrint('发送认证请求: $authRequest');
-    _channel!.sink.add(authRequest);
-    debugPrint('认证请求已发送');
-  }
+  // 旧的认证请求方法已移除，现在认证在握手阶段完成
 
   /// 发送获取内容请求
   void fetchContent() {
@@ -737,35 +790,7 @@ class SocketClient with WidgetsBindingObserver {
         final Map<String, dynamic> data = jsonDecode(message);
         final String type = data['type'];
 
-        if (type == 'auth_response') {
-          debugPrint('收到认证响应: $data');
-          final bool success = data['success'] ?? false;
-          if (success) {
-            debugPrint('认证成功');
-            _eventController.add(SocketClientEvent(
-              type: SocketClientEventType.auth,
-              content: 'success',
-            ));
-
-            // 完成认证 Completer
-            if (_authCompleter != null && !_authCompleter!.isCompleted) {
-              _authCompleter!.complete(true);
-            }
-          } else {
-            final message = data['message'] ?? '未知原因';
-            debugPrint('认证失败: $message');
-            _handleError('认证失败: $message');
-
-            // 完成认证 Completer（失败）
-            if (_authCompleter != null && !_authCompleter!.isCompleted) {
-              _authCompleter!.complete(false);
-            }
-
-            // 认证失败时主动断开连接
-            debugPrint('认证失败，主动断开连接');
-            disconnect();
-          }
-        } else if (type == 'content') {
+        if (type == 'content') {
           final String content = data['content'] ?? '';
           _eventController.add(SocketClientEvent(
             type: SocketClientEventType.content,

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/widgets.dart';
+import 'auth_utils.dart';
 
 /// 定义Socket服务的状态
 enum SocketServiceStatus {
@@ -109,15 +110,84 @@ class SocketService with WidgetsBindingObserver {
   // 是否启用密码验证
   bool _passwordRequired = false;
 
+  // 盐值，用于密码哈希
+  String _salt = '';
+
   /// 设置密码
   void setPassword(String? password) {
     _password = password;
     _passwordRequired = password != null && password.isNotEmpty;
+
+    // 使用固定盐值，客户端和服务端共享
+    _salt = AuthUtils.fixedSalt;
   }
 
   /// 检查客户端是否已认证
   bool isClientAuthenticated(WebSocket socket) {
     return !_passwordRequired || _authenticatedClients.contains(socket);
+  }
+
+  /// 验证认证令牌
+  ///
+  /// [token] 认证令牌
+  /// [timestamp] 时间戳
+  /// [request] HTTP请求，用于在认证失败时设置响应状态
+  ///
+  /// 返回一个包含认证结果和可能的错误信息的 Map
+  Future<Map<String, dynamic>> _verifyAuthToken(String token, String timestampStr, HttpRequest request) async {
+    try {
+      // 解析时间戳
+      final timestamp = int.parse(timestampStr);
+
+      // 验证时间戳是否在有效范围内（5分钟内）
+      final currentTime = DateTime.now().millisecondsSinceEpoch;
+      final timeDifference = (currentTime - timestamp).abs();
+      final maxTimeDifference = 5 * 60 * 1000; // 5分钟，单位为毫秒
+
+      if (timeDifference > maxTimeDifference) {
+        request.response.statusCode = 401; // Unauthorized
+        request.response.headers.add('X-Auth-Error', 'Token expired or invalid timestamp');
+        request.response.headers.add('X-Auth-Time-Difference', timeDifference.toString());
+        request.response.headers.add('X-Auth-Max-Difference', maxTimeDifference.toString());
+        await request.response.close();
+        return {'success': false, 'error': 'Token expired or invalid timestamp'};
+      }
+
+      // 验证令牌
+      final isAuthenticated = AuthUtils.verifyToken(token, _password!, _salt, timestamp);
+
+      // 如果认证失败，设置响应状态
+      if (!isAuthenticated) {
+        request.response.statusCode = 401; // Unauthorized
+        request.response.headers.add('X-Auth-Error', 'Authentication failed');
+        await request.response.close();
+        return {'success': false, 'error': 'Authentication failed'};
+      }
+
+      return {'success': true};
+    } catch (e) {
+      // 时间戳解析失败或其他错误
+      request.response.statusCode = 400; // Bad Request
+      request.response.headers.add('X-Auth-Error', 'Invalid timestamp or token format');
+      request.response.headers.add('X-Auth-Exception', e.toString());
+      await request.response.close();
+      return {'success': false, 'error': 'Invalid timestamp or token format', 'exception': e.toString()};
+    }
+  }
+
+  /// 处理认证检查请求
+  ///
+  /// 当客户端发送检查认证需求的请求时，返回盐值和认证需求信息
+  Future<bool> _handleAuthCheck(HttpRequest request) async {
+    if (request.headers.value('X-Auth-Check') == 'true') {
+      // 如果是检查认证需求的请求，返回 401 和盐值
+      request.response.statusCode = 401; // Unauthorized
+      request.response.headers.add('X-Auth-Salt', _salt);
+      request.response.headers.add('X-Auth-Required', 'true');
+      await request.response.close();
+      return true; // 表示已处理
+    }
+    return false; // 表示未处理
   }
 
   /// 启动Socket服务器
@@ -274,12 +344,65 @@ class SocketService with WidgetsBindingObserver {
         return;
       }
 
+      // 检查认证
+      bool isAuthenticated = false;
+
+      // 如果需要密码验证
+      if (_passwordRequired && _password != null) {
+        // 首先检查是否是认证检查请求
+        if (await _handleAuthCheck(request)) {
+          return; // 已处理认证检查请求
+        }
+
+        // 获取认证信息，优先从 HTTP 头部获取
+        String? token;
+        String? timestampStr;
+
+        // 从 HTTP 头部获取认证信息
+        final authHeader = request.headers.value('Authorization');
+        final timestampHeader = request.headers.value('X-Auth-Timestamp');
+
+        if (authHeader != null && authHeader.startsWith('Bearer ') && timestampHeader != null) {
+          token = authHeader.substring(7); // 去掉 "Bearer " 前缀
+          timestampStr = timestampHeader;
+        } else {
+          // 从 URL 参数获取认证信息（兼容旧版本客户端）
+          token = request.uri.queryParameters['auth'];
+          timestampStr = request.uri.queryParameters['timestamp'];
+        }
+
+        // 如果有认证信息，验证令牌
+        if (token != null && timestampStr != null) {
+          final result = await _verifyAuthToken(token, timestampStr, request);
+          if (!result['success']) {
+            return; // 验证失败，已在 _verifyAuthToken 中设置响应状态
+          }
+          isAuthenticated = true;
+        } else {
+          // 缺少认证信息，但需要认证
+          // 返回 401 和盐值，让客户端知道需要认证
+          request.response.statusCode = 401; // Unauthorized
+          request.response.headers.add('X-Auth-Salt', _salt);
+          request.response.headers.add('X-Auth-Required', 'true');
+          await request.response.close();
+          return;
+        }
+      } else {
+        // 不需要密码验证
+        isAuthenticated = true;
+      }
+
       final socket = await WebSocketTransformer.upgrade(request);
       _clients.add(socket);
 
       // 存储客户端IP地址
       if (clientIP != null) {
         _clientIPs[socket] = clientIP;
+      }
+
+      // 如果认证成功，将客户端添加到已认证列表
+      if (isAuthenticated) {
+        _authenticatedClients.add(socket);
       }
 
       // 初始化时不需要设置 ping 状态，因为我们使用 _pingTimers 来判断是否有待处理的 ping
@@ -290,6 +413,15 @@ class SocketService with WidgetsBindingObserver {
         content: clientIP,
         socket: socket,
       ));
+
+      // 如果认证成功，触发认证事件
+      if (isAuthenticated) {
+        _eventController.add(SocketEvent(
+          type: SocketEventType.auth,
+          content: 'success',
+          socket: socket,
+        ));
+      }
 
       // 监听消息
       socket.listen(
@@ -368,38 +500,11 @@ class SocketService with WidgetsBindingObserver {
           _pingTimers[socket]?.cancel();
           _pingTimers.remove(socket);
 
-        // 处理认证请求
-        if (type == 'auth') {
-          final String password = data['password'] ?? '';
-          final bool authenticated =
-              !_passwordRequired || password == _password;
-
-          if (authenticated) {
-            _authenticatedClients.add(socket);
-          }
-
-          // 发送认证响应
-          socket.add(jsonEncode({
-            'type': 'auth_response',
-            'success': authenticated,
-            'message': authenticated ? '认证成功' : '密码错误',
-          }));
-
-          // 触发认证事件
-          _eventController.add(SocketEvent(
-            type: SocketEventType.auth,
-            content: authenticated ? 'success' : 'failed',
-            socket: socket,
-          ));
-
-          return;
-        }
-
         // 如果需要密码验证但客户端未认证，拒绝请求
         if (_passwordRequired && !_authenticatedClients.contains(socket)) {
           socket.add(jsonEncode({
             'type': 'error',
-            'message': '需要认证，请先发送auth请求',
+            'message': '需要认证，请重新连接并提供认证信息',
           }));
           return;
         }

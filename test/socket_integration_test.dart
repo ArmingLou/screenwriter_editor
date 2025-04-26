@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:web_socket_channel/io.dart';
+import 'package:crypto/crypto.dart';
 
 /// 这个测试文件模拟VSCode扩展，连接到真机上运行的剧本编辑器应用
 /// 测试远程同步功能
@@ -16,13 +17,13 @@ void main() {
     // 例如: DEVICE_IP=192.168.1.123 DEVICE_PORT=8888 flutter test test/socket_integration_test.dart
     final String deviceIp = Platform.environment['DEVICE_IP'] ?? '192.168.3.248';
     final int devicePort = int.parse(Platform.environment['DEVICE_PORT'] ?? '8080');
-    final String? devicePassword = Platform.environment['DEVICE_PASSWORD'] ?? 'arming';
+    final String devicePassword = Platform.environment['DEVICE_PASSWORD'] ?? 'arming';
 
     // 测试前的提示
     setUp(() {
       print('\n测试开始: 请确保真机应用已启动并开启Socket服务');
       print('连接地址: ws://$deviceIp:$devicePort');
-      if (devicePassword != null && devicePassword!.isNotEmpty) {
+      if (devicePassword.isNotEmpty) {
         print('密码验证: 已启用 (密码: $devicePassword)');
       } else {
         print('密码验证: 未启用');
@@ -35,12 +36,50 @@ void main() {
       final completer = Completer<String>();
 
       try {
-        // 连接到真机上的WebSocket服务
-        final wsClient = IOWebSocketChannel.connect('ws://$deviceIp:$devicePort');
+        // 如果需要认证，在URL中添加认证参数
+        String wsUrl = 'ws://$deviceIp:$devicePort';
 
-        // 认证状态
-        bool isAuthenticated = devicePassword == null || devicePassword!.isEmpty;
-        final authCompleter = Completer<bool>();
+        // 连接到真机上的WebSocket服务
+        IOWebSocketChannel wsClient;
+
+        if (devicePassword.isNotEmpty) {
+          print('使用HTTP头部进行认证...');
+
+          // 生成盐值（在实际应用中，应该先从服务器获取盐值）
+          final salt = 'test_salt_for_integration_test';
+
+          // 生成时间戳
+          final timestamp = DateTime.now().millisecondsSinceEpoch;
+
+          // 简单的哈希函数，用于测试
+          String generateToken(String password, String salt, int timestamp) {
+            final bytes = utf8.encode(password + salt + timestamp.toString());
+            final digest = sha256.convert(bytes);
+            return digest.toString();
+          }
+
+          final token = generateToken(devicePassword, salt, timestamp);
+
+          // 准备认证头部
+          final Map<String, String> headers = {
+            'Authorization': 'Bearer $token',
+            'X-Auth-Timestamp': timestamp.toString(),
+          };
+
+          print('使用认证头部: $headers');
+
+          // 使用带认证头部的WebSocket连接
+          wsClient = IOWebSocketChannel.connect(
+            Uri.parse(wsUrl),
+            headers: headers,
+          );
+        } else {
+          // 不需要认证，直接连接
+          wsClient = IOWebSocketChannel.connect(wsUrl);
+        }
+
+        // 认证状态（通过URL参数认证，默认认为已认证）
+        bool isAuthenticated = true;
 
         // 监听响应
         wsClient.stream.listen(
@@ -48,17 +87,8 @@ void main() {
             try {
               final data = jsonDecode(message);
 
-              // 处理认证响应
-              if (data['type'] == 'auth_response') {
-                final bool success = data['success'] == true;
-                print('认证${success ? '成功' : '失败'}: ${data['message']}');
-                isAuthenticated = success;
-                if (!authCompleter.isCompleted) {
-                  authCompleter.complete(success);
-                }
-              }
               // 处理错误消息
-              else if (data['type'] == 'error') {
+              if (data['type'] == 'error') {
                 print('收到错误: ${data['message']}');
                 if (!completer.isCompleted) {
                   completer.completeError(data['message']);
@@ -92,30 +122,6 @@ void main() {
 
         // 等待连接建立
         await Future.delayed(const Duration(seconds: 1));
-
-        // 如果需要认证，先发送认证请求
-        if (devicePassword != null && devicePassword!.isNotEmpty) {
-          print('发送认证请求...');
-          wsClient.sink.add(jsonEncode({
-            'type': 'auth',
-            'password': devicePassword
-          }));
-
-          // 等待认证结果
-          isAuthenticated = await authCompleter.future.timeout(
-            const Duration(seconds: 5),
-            onTimeout: () {
-              print('认证超时');
-              return false;
-            }
-          );
-
-          if (!isAuthenticated) {
-            throw Exception('认证失败');
-          }
-
-          print('认证成功，继续测试...');
-        }
 
         print('发送fetch请求...');
         // 发送fetch请求
@@ -151,7 +157,7 @@ void main() {
         final wsClient = IOWebSocketChannel.connect('ws://$deviceIp:$devicePort');
 
         // 认证状态
-        bool isAuthenticated = devicePassword == null || devicePassword.isEmpty;
+        bool isAuthenticated = devicePassword.isEmpty;
         final authCompleter = Completer<bool>();
 
         // 监听响应
@@ -181,7 +187,7 @@ void main() {
         await Future.delayed(const Duration(seconds: 1));
 
         // 如果需要认证，先发送认证请求
-        if (devicePassword != null && devicePassword.isNotEmpty) {
+        if (devicePassword.isNotEmpty) {
           print('发送认证请求...');
           wsClient.sink.add(jsonEncode({
             'type': 'auth',
@@ -266,7 +272,7 @@ EXT. 公园 - NIGHT
         final fetchCompleter = Completer<String>();
 
         // 认证状态
-        bool isAuthenticated = devicePassword == null || devicePassword.isEmpty;
+        bool isAuthenticated = devicePassword.isEmpty;
         final authCompleter = Completer<bool>();
 
         // 监听响应
@@ -315,7 +321,7 @@ EXT. 公园 - NIGHT
         await Future.delayed(const Duration(seconds: 1));
 
         // 如果需要认证，先发送认证请求
-        if (devicePassword != null && devicePassword.isNotEmpty) {
+        if (devicePassword.isNotEmpty) {
           print('发送认证请求...');
           wsClient.sink.add(jsonEncode({
             'type': 'auth',
