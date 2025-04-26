@@ -43,12 +43,14 @@ class RemoteServerConfig {
   final String host;
   final int port;
   final String? password;
+  final bool isDefault;
 
   RemoteServerConfig({
     required this.name,
     required this.host,
     required this.port,
     this.password,
+    this.isDefault = false,
   });
 
   Map<String, dynamic> toJson() {
@@ -57,6 +59,7 @@ class RemoteServerConfig {
       'host': host,
       'port': port,
       'password': password,
+      'isDefault': isDefault,
     };
   }
 
@@ -66,6 +69,24 @@ class RemoteServerConfig {
       host: json['host'] as String,
       port: json['port'] as int,
       password: json['password'] as String?,
+      isDefault: json['isDefault'] as bool? ?? false,
+    );
+  }
+
+  // 创建一个新的配置实例，可以修改某些属性
+  RemoteServerConfig copyWith({
+    String? name,
+    String? host,
+    int? port,
+    String? password,
+    bool? isDefault,
+  }) {
+    return RemoteServerConfig(
+      name: name ?? this.name,
+      host: host ?? this.host,
+      port: port ?? this.port,
+      password: password ?? this.password,
+      isDefault: isDefault ?? this.isDefault,
     );
   }
 }
@@ -109,6 +130,9 @@ class SocketClient with WidgetsBindingObserver {
   final StreamController<SocketClientEvent> _eventController =
       StreamController<SocketClientEvent>.broadcast();
 
+  // 认证完成的 Completer
+  Completer<bool>? _authCompleter;
+
   // 事件流
   Stream<SocketClientEvent> get events => _eventController.stream;
 
@@ -124,6 +148,20 @@ class SocketClient with WidgetsBindingObserver {
       _savedServers = serversJson
           .map((json) => RemoteServerConfig.fromJson(jsonDecode(json)))
           .toList();
+
+      // 检查是否只有一个服务器，如果是，则自动将其设置为默认服务器
+      if (_savedServers.length == 1 && !_savedServers[0].isDefault) {
+        // 创建一个新的配置，将isDefault设为true
+        final newConfig = _savedServers[0].copyWith(isDefault: true);
+
+        // 更新服务器列表
+        _savedServers[0] = newConfig;
+
+        // 保存到SharedPreferences
+        final updatedServersJson =
+            _savedServers.map((server) => jsonEncode(server.toJson())).toList();
+        await prefs.setStringList('socket_client_servers', updatedServersJson);
+      }
 
       return _savedServers;
     } catch (e) {
@@ -144,12 +182,35 @@ class SocketClient with WidgetsBindingObserver {
         (server) => server.host == config.host,
       );
 
+      // 检查是否是第一个服务器，如果是，则自动将其设置为默认服务器
+      bool isFirstServer = _savedServers.isEmpty;
+
+      // 如果是第一个服务器或新配置被设置为默认，则清除其他配置的默认标记
+      if (config.isDefault || isFirstServer) {
+        // 如果是第一个服务器但未设置为默认，则将其设置为默认
+        if (isFirstServer && !config.isDefault) {
+          config = config.copyWith(isDefault: true);
+        }
+
+        // 清除其他配置的默认标记
+        for (int i = 0; i < _savedServers.length; i++) {
+          if (_savedServers[i].isDefault) {
+            _savedServers[i] = _savedServers[i].copyWith(isDefault: false);
+          }
+        }
+      }
+
       if (existingIndex >= 0) {
         // 更新现有配置
         _savedServers[existingIndex] = config;
       } else {
         // 添加新配置
         _savedServers.add(config);
+      }
+
+      // 如果添加/更新后只有一个服务器，确保它是默认服务器
+      if (_savedServers.length == 1 && !_savedServers[0].isDefault) {
+        _savedServers[0] = _savedServers[0].copyWith(isDefault: true);
       }
 
       // 保存到SharedPreferences
@@ -171,10 +232,29 @@ class SocketClient with WidgetsBindingObserver {
       // 加载现有配置
       await loadSavedServers();
 
+      // 检查是否删除的是默认服务器
+      bool wasDefault = false;
+      for (var server in _savedServers) {
+        if (server.host == config.host && server.port == config.port && server.isDefault) {
+          wasDefault = true;
+          break;
+        }
+      }
+
       // 移除匹配的配置
       _savedServers.removeWhere(
         (server) => server.host == config.host && server.port == config.port,
       );
+
+      // 如果删除的是默认服务器，且还有其他服务器，则将第一个服务器设为默认
+      if (wasDefault && _savedServers.isNotEmpty) {
+        _savedServers[0] = _savedServers[0].copyWith(isDefault: true);
+      }
+
+      // 如果删除后只剩一个服务器，则自动将其设置为默认服务器
+      if (_savedServers.length == 1 && !_savedServers[0].isDefault) {
+        _savedServers[0] = _savedServers[0].copyWith(isDefault: true);
+      }
 
       // 保存到SharedPreferences
       final prefs = await SharedPreferences.getInstance();
@@ -186,6 +266,150 @@ class SocketClient with WidgetsBindingObserver {
     } catch (e) {
       debugPrint('Error deleting server config: $e');
       return false;
+    }
+  }
+
+  /// 获取默认服务器配置
+  Future<RemoteServerConfig?> getDefaultServer() async {
+    // 加载现有配置
+    await loadSavedServers();
+
+    // 查找默认服务器
+    for (var server in _savedServers) {
+      if (server.isDefault) {
+        return server;
+      }
+    }
+
+    // 如果没有默认服务器但有服务器配置，则返回第一个
+    if (_savedServers.isNotEmpty) {
+      return _savedServers.first;
+    }
+
+    // 没有服务器配置
+    return null;
+  }
+
+  /// 设置默认服务器
+  Future<bool> setDefaultServer(RemoteServerConfig config) async {
+    // 创建一个新的配置，将isDefault设为true
+    final newConfig = config.copyWith(isDefault: true);
+
+    // 保存配置
+    return await saveServerConfig(newConfig);
+  }
+
+  /// 完整的连接过程，包括初始连接和完成连接
+  /// 可以被配置页和主页菜单共用
+  ///
+  /// [server] 要连接的服务器配置
+  /// [onSuccess] 连接成功后的回调函数，可选
+  /// [onFailure] 连接失败后的回调函数，可选
+  ///
+  /// 返回连接是否成功
+  ///
+  /// 注意：onSuccess 回调只会在收到 auth_response 并且认证成功后才会被调用
+  Future<bool> connectComplete(
+    RemoteServerConfig server, {
+    Function()? onSuccess,
+    Function(String error)? onFailure,
+  }) async {
+    try {
+      // 先调用 connect 方法
+      final connectSuccess = await connect(server);
+      if (connectSuccess) {
+        // 如果连接成功，再调用 completeConnection 方法完成连接过程
+        // completeConnection 方法会等待认证完成
+        final completeSuccess = await completeConnection();
+        if (completeSuccess) {
+          // 连接完全成功（包括认证成功），调用成功回调
+          if (onSuccess != null) {
+            onSuccess();
+          }
+          return true;
+        } else {
+          // 完成连接过程失败（可能是认证失败）
+          if (onFailure != null) {
+            onFailure('完成连接过程失败');
+          }
+          return false;
+        }
+      } else {
+        // 初始连接失败
+        if (onFailure != null) {
+          onFailure('初始连接失败');
+        }
+        return false;
+      }
+    } catch (e) {
+      // 连接过程发生异常
+      if (onFailure != null) {
+        onFailure('连接过程发生异常: ${e.toString()}');
+      }
+      return false;
+    }
+  }
+
+  /// 连接到默认服务器
+  ///
+  /// [onSuccess] 连接成功后的回调函数，可选
+  /// [onFailure] 连接失败后的回调函数，可选
+  ///
+  /// 返回连接是否成功
+  Future<bool> connectToDefaultServer({
+    Function()? onSuccess,
+    Function(String error)? onFailure,
+  }) async {
+    final defaultServer = await getDefaultServer();
+    if (defaultServer != null) {
+      // 使用通用的连接方法
+      return await connectComplete(
+        defaultServer,
+        onSuccess: onSuccess,
+        onFailure: onFailure,
+      );
+    } else {
+      // 没有默认服务器
+      if (onFailure != null) {
+        onFailure('没有默认服务器');
+      }
+      return false;
+    }
+  }
+
+  /// 连接并执行操作
+  ///
+  /// 如果已连接，直接执行操作
+  /// 如果未连接，先连接再执行操作
+  ///
+  /// [action] 要执行的操作
+  /// [onConnectionFailure] 连接失败时的回调
+  /// [server] 要连接的服务器，如果为null则使用默认服务器
+  Future<void> connectAndExecute({
+    required Function() action,
+    Function(String error)? onConnectionFailure,
+    RemoteServerConfig? server,
+  }) async {
+    // 检查当前连接状态
+    if (status.value == SocketClientStatus.connected) {
+      // 已连接，直接执行操作
+      action();
+    } else {
+      // 未连接，先连接再执行操作
+      if (server != null) {
+        // 使用指定的服务器
+        await connectComplete(
+          server,
+          onSuccess: action,
+          onFailure: onConnectionFailure,
+        );
+      } else {
+        // 使用默认服务器
+        await connectToDefaultServer(
+          onSuccess: action,
+          onFailure: onConnectionFailure,
+        );
+      }
     }
   }
 
@@ -324,6 +548,9 @@ class SocketClient with WidgetsBindingObserver {
       // 更新状态为已连接，这样认证请求才能发送
       status.value = SocketClientStatus.connected;
 
+      // 创建认证完成的 Completer
+      _authCompleter = Completer<bool>();
+
       // 如果有密码，发送密码；如果没有，发送空密码
       if (server.password != null && server.password!.isNotEmpty) {
         _sendAuthRequest(server.password!);
@@ -354,7 +581,29 @@ class SocketClient with WidgetsBindingObserver {
         );
       // }
 
-      return true;
+      // 等待认证完成
+      try {
+        // 设置超时，避免无限等待
+        final authSuccess = await _authCompleter!.future.timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            debugPrint('认证超时');
+            return false;
+          },
+        );
+
+        // 如果认证失败，返回 false
+        if (!authSuccess) {
+          debugPrint('认证失败，连接过程未完成');
+          return false;
+        }
+
+        debugPrint('认证成功，连接过程完成');
+        return true;
+      } catch (e) {
+        debugPrint('等待认证过程中发生错误: $e');
+        return false;
+      }
     } catch (e) {
       // 一般是 403 黑名单。 或者 _channel!.ready 失败。
       // 使用_handleError方法处理错误，避免重复触发错误事件
@@ -365,6 +614,11 @@ class SocketClient with WidgetsBindingObserver {
 
   /// 断开连接
   Future<void> disconnect() async {
+    // 如果认证 Completer 尚未完成，则完成它（失败）
+    if (_authCompleter != null && !_authCompleter!.isCompleted) {
+      _authCompleter!.complete(false);
+    }
+
     if (_channel != null) {
       await _channel!.sink.close(); // 会在在 _channel!.stream 的 onDone 回调中处理
       // _channel = null;
@@ -445,10 +699,21 @@ class SocketClient with WidgetsBindingObserver {
               type: SocketClientEventType.auth,
               content: 'success',
             ));
+
+            // 完成认证 Completer
+            if (_authCompleter != null && !_authCompleter!.isCompleted) {
+              _authCompleter!.complete(true);
+            }
           } else {
             final message = data['message'] ?? '未知原因';
             debugPrint('认证失败: $message');
             _handleError('认证失败: $message');
+
+            // 完成认证 Completer（失败）
+            if (_authCompleter != null && !_authCompleter!.isCompleted) {
+              _authCompleter!.complete(false);
+            }
+
             // 认证失败时主动断开连接
             debugPrint('认证失败，主动断开连接');
             disconnect();
@@ -527,6 +792,12 @@ class SocketClient with WidgetsBindingObserver {
     _pingTimers?.cancel();
     _pingTimers = null;
 
+    // 如果认证 Completer 尚未完成，则完成它（失败）
+    if (_authCompleter != null && !_authCompleter!.isCompleted) {
+      _authCompleter!.complete(false);
+    }
+    _authCompleter = null;
+
     _channel = null;
     currentServer = null;
 
@@ -544,6 +815,11 @@ class SocketClient with WidgetsBindingObserver {
 
     errorMessage = error;
     status.value = SocketClientStatus.error;
+
+    // 如果认证 Completer 尚未完成，则完成它（失败）
+    if (_authCompleter != null && !_authCompleter!.isCompleted) {
+      _authCompleter!.complete(false);
+    }
 
     _eventController.add(SocketClientEvent(
       type: SocketClientEventType.error,
@@ -613,7 +889,7 @@ class SocketClient with WidgetsBindingObserver {
     }
   }
 
-  // 强制检查服务器状态，特别用于从后台恢复时。 
+  // 强制检查服务器状态，特别用于从后台恢复时。
   Future<void> _forceCheckClinetStatus() async {
     if (_channel == null) {
       return;

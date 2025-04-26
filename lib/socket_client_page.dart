@@ -104,7 +104,19 @@ class _SocketClientPageState extends State<SocketClientPage> {
       _isLoading = true;
     });
 
+    // 加载服务器列表
     _savedServers = await _socketClient.loadSavedServers();
+
+    // 对服务器列表进行排序，将默认服务器排在最前面
+    _savedServers.sort((a, b) {
+      if (a.isDefault && !b.isDefault) {
+        return -1; // a是默认服务器，排在前面
+      } else if (!a.isDefault && b.isDefault) {
+        return 1; // b是默认服务器，排在前面
+      } else {
+        return 0; // 保持原有顺序
+      }
+    });
 
     setState(() {
       _isLoading = false;
@@ -303,6 +315,7 @@ class _SocketClientPageState extends State<SocketClientPage> {
       host: host,
       port: port,
       password: password.isNotEmpty ? password : null,
+      // 不再手动设置默认服务器，由 SocketClient 类自动处理
     );
 
     // 保存配置
@@ -443,9 +456,7 @@ class _SocketClientPageState extends State<SocketClientPage> {
         const SizedBox(height: 8),
         const Text(
           '1. 添加远程服务器\n'
-          '2. 连接到服务器\n'
-          '3. 连接成功后，返回编辑器界面\n'
-          '4. 使用推送/拉取功能同步内容',
+          '2. 返回编辑器界面，使用推送/拉取功能同步内容',
         ),
       ],
     );
@@ -522,12 +533,34 @@ class _SocketClientPageState extends State<SocketClientPage> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      server.name,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
+                                    Row(
+                                      children: [
+                                        Text(
+                                          server.name,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        if (server.isDefault)
+                                          Container(
+                                            margin: const EdgeInsets.only(left: 8),
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Colors.blue,
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: const Text(
+                                              '默认',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
@@ -589,90 +622,89 @@ class _SocketClientPageState extends State<SocketClientPage> {
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              // 连接按钮
-                              // 如果有其他服务器连接中或已连接，且当前服务器未连接，则添加提示
-                              Tooltip(
-                                message: (anyServerConnecting && !isConnected)
-                                    ? '已有服务器连接，请先断开当前连接'
-                                    : '',
-                                // 只在按钮禁用时显示提示
-                                triggerMode:
-                                    (anyServerConnecting && !isConnected)
-                                        ? TooltipTriggerMode.tap
-                                        : TooltipTriggerMode.manual,
-                                child: ElevatedButton.icon(
-                                  icon: Icon(
-                                    isConnected ? Icons.link : Icons.link_off,
-                                    size: 18,
-                                  ),
-                                  label: Text(isConnected ? '断开' : '连接'),
-                                  // 如果当前服务器已连接，则显示断开按钮
-                                  // 如果有任何服务器处于连接中或已连接状态，且当前服务器未连接，则禁用按钮
-                                  onPressed: isConnected
-                                      ? () async {
-                                          await _socketClient.disconnect();
-                                          // _showSnackBar('已断开连接');
-                                          // 强制刷新UI，确保所有按钮状态更新
-                                          setState(() {});
-                                        }
-                                      : (anyServerConnecting && !isConnected)
-                                          ? null // 如果有其他服务器连接中或已连接，则禁用按钮
-                                          : () async {
-                                              // 显示连接中的状态
-                                              setState(() {
-                                                // 状态已经在connect方法中设置为连接中
-                                              });
 
-                                              // 异步连接，不会阻塞UI
-                                              try {
-                                                // 不需要使用单一变量跟踪是否已经显示错误信息
-                                                // 因为我们已经在事件监听器中禁用了错误消息显示
+                              // 根据是否为默认服务器显示不同的按钮
+                              if (server.isDefault)
+                                // 连接/断开连接按钮 (仅对默认服务器显示)
+                                Tooltip(
+                                  message: (anyServerConnecting && !isConnected)
+                                      ? '已有服务器连接，请先断开当前连接'
+                                      : '',
+                                  // 只在按钮禁用时显示提示
+                                  triggerMode:
+                                      (anyServerConnecting && !isConnected)
+                                          ? TooltipTriggerMode.tap
+                                          : TooltipTriggerMode.manual,
+                                  child: ElevatedButton.icon(
+                                    icon: Icon(
+                                      isConnected ? Icons.link : Icons.link_off,
+                                      size: 18,
+                                    ),
+                                    label: Text(isConnected ? '断开' : '连接'),
+                                    // 如果当前服务器已连接，则显示断开按钮
+                                    // 如果有任何服务器处于连接中或已连接状态，且当前服务器未连接，则禁用按钮
+                                    onPressed: isConnected
+                                        ? () async {
+                                            await _socketClient.disconnect();
+                                            // _showSnackBar('已断开连接');
+                                            // 强制刷新UI，确保所有按钮状态更新
+                                            setState(() {});
+                                          }
+                                        : (anyServerConnecting && !isConnected)
+                                            ? null // 如果有其他服务器连接中或已连接，则禁用按钮
+                                            : () async {
+                                                // 显示连接中的状态
+                                                setState(() {
+                                                  // 状态已经在connect方法中设置为连接中
+                                                });
 
-                                                final success =
-                                                    await _socketClient
-                                                        .connect(server);
-
-                                                if (success) {
-                                                  // 连接成功，完成连接过程
-                                                  try {
-                                                    final completeSuccess =
-                                                        await _socketClient
-                                                            .completeConnection();
-
-                                                    if (completeSuccess &&
-                                                        mounted) {
-                                                      // _showSnackBar('连接成功');
-                                                      // 强制刷新UI，确保连接状态显示正确
-                                                      setState(() {});
-                                                    }
-                                                  } catch (e) {
-                                                    // 完成连接过程失败
+                                                // 异步连接，不会阻塞UI
+                                                // 使用带回调的通用连接方法
+                                                await _socketClient.connectComplete(
+                                                  server,
+                                                  onSuccess: () {
                                                     if (mounted) {
-                                                      _showSnackBar(
-                                                          '连接失败: ${e.toString()}',
-                                                          color: Colors.red);
+                                                      // 连接成功，刷新UI
                                                       setState(() {});
                                                     }
-                                                  }
-                                                }
-                                                // 不成功会 发送事件 SocketClientEventType.error 。已经在事件处理中 弹窗。
-                                              } catch (e) {
-                                                // 捕获所有异常，确保 UI 不会卡死
-                                                if (mounted) {
-                                                  _showSnackBar(
-                                                      '连接过程发生错误: ${e.toString()}',
-                                                      color: Colors.red);
-                                                  setState(() {});
-                                                }
-                                              }
-                                            },
+                                                  },
+                                                  // onFailure: (error) {
+                                                  //   if (mounted) {
+                                                  //     _showSnackBar(
+                                                  //       '连接失败: $error',
+                                                  //       color: Colors.red,
+                                                  //     );
+                                                  //     setState(() {});
+                                                  //   }
+                                                  // },
+                                                );
+                                              },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor:
+                                          isConnected ? Colors.red : Colors.blue,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                  ),
+                                )
+                              else
+                                // 设为默认按钮 (仅对非默认服务器显示)
+                                ElevatedButton.icon(
+                                  icon: const Icon(Icons.star_outline, size: 18),
+                                  label: const Text('设为默认'),
+                                  onPressed: () async {
+                                    final success = await _socketClient.setDefaultServer(server);
+                                    if (success) {
+                                      _showSnackBar('已设置为默认服务器');
+                                      _loadSavedServers(); // 重新加载列表
+                                    } else {
+                                      _showSnackBar('设置默认服务器失败', color: Colors.red);
+                                    }
+                                  },
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor:
-                                        isConnected ? Colors.red : Colors.blue,
+                                    backgroundColor: Colors.orange,
                                     foregroundColor: Colors.white,
                                   ),
                                 ),
-                              ),
                             ],
                           ),
                         ],
