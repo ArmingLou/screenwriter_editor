@@ -841,7 +841,8 @@ class _EditorScreenState extends State<EditorScreen> {
         case SocketEventType.clientDisconnected:
         case SocketEventType.clientBanned:
         case SocketEventType.blacklistChanged:
-          // 当有客户端连接、断开、被禁止或黑名单变化时，刷新服务端菜单
+        case SocketEventType.statsChanged:
+          // 当有客户端连接、断开、被禁止、黑名单变化或统计数据变化时，刷新服务端菜单
           // 使用全局变量记录菜单状态
           if (_socketServerMenuState != null) {
             // 如果菜单已打开，则刷新菜单
@@ -1083,13 +1084,53 @@ class _EditorScreenState extends State<EditorScreen> {
                             ),
                             ...connectedClients.map((client) => ListTile(
                                   title: Text(client['ip'] as String),
-                                  // subtitle: Text(
-                                  //     client['authenticated'] ? '已认证' : '未认证'),
+                                  subtitle: Text(
+                                      '拉取: ${client['fetchCount']} | 推送: ${client['pushCount']}'),
                                   leading: const Icon(Icons.computer,
                                       color: Colors.blue),
                                   trailing: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
+                                      // 禁止客户端按钮
+                                      IconButton(
+                                        icon: const Icon(Icons.block),
+                                        color: Colors.red,
+                                        tooltip: '禁止客户端',
+                                        onPressed: () async {
+                                          // 先关闭菜单，再禁止客户端，避免异步问题
+                                          Navigator.pop(context);
+                                          // 使用 Future.microtask 确保在菜单关闭后再禁止客户端
+                                          Future.microtask(() async {
+                                            final success = await _socketService
+                                                .banClient(
+                                                    client['socket']
+                                                        as WebSocket);
+                                            if (mounted) {
+                                              if (success) {
+                                                _showInfo('已禁止客户端连接');
+                                                // 刷新菜单
+                                                // 使用setState刷新界面，而不是直接调用_showSocketServerMenu
+                                                setState(() {});
+                                                // 延迟一下再显示菜单
+                                                // 使用定时器而不是 Future.delayed，避免 BuildContext 问题
+                                                Timer(
+                                                    const Duration(
+                                                        milliseconds: 300),
+                                                    () async {
+                                                  if (mounted) {
+                                                    // 使用当前的 context
+                                                    await _showSocketServerMenu(
+                                                        this.context);
+                                                  }
+                                                });
+                                              } else {
+                                                _showError('禁止客户端连接失败');
+                                              }
+                                            }
+                                          });
+                                        },
+                                      ),
+
                                       // 断开连接按钮
                                       IconButton(
                                         icon: const Icon(Icons.link_off),
@@ -1128,44 +1169,6 @@ class _EditorScreenState extends State<EditorScreen> {
                                           });
                                         },
                                       ),
-                                      // 禁止客户端按钮
-                                      IconButton(
-                                        icon: const Icon(Icons.block),
-                                        tooltip: '本次禁止',
-                                        color: Colors.red,
-                                        onPressed: () async {
-                                          // 先关闭菜单，再禁止客户端，避免异步问题
-                                          Navigator.pop(context);
-                                          // 使用 Future.microtask 确保在菜单关闭后再禁止客户端
-                                          Future.microtask(() async {
-                                            final success = await _socketService
-                                                .banClient(client['socket']
-                                                    as WebSocket);
-                                            if (mounted) {
-                                              if (success) {
-                                                _showInfo('已禁止客户端连接');
-                                                // 刷新菜单
-                                                // 使用setState刷新界面，而不是直接调用_showSocketServerMenu
-                                                setState(() {});
-                                                // 延迟一下再显示菜单
-                                                // 使用定时器而不是 Future.delayed，避免 BuildContext 问题
-                                                Timer(
-                                                    const Duration(
-                                                        milliseconds: 300),
-                                                    () async {
-                                                  if (mounted) {
-                                                    // 使用当前的 context
-                                                    await _showSocketServerMenu(
-                                                        this.context);
-                                                  }
-                                                });
-                                              } else {
-                                                _showError('禁止客户端连接失败');
-                                              }
-                                            }
-                                          });
-                                        },
-                                      ),
                                     ],
                                   ),
                                 )),
@@ -1181,8 +1184,10 @@ class _EditorScreenState extends State<EditorScreen> {
                                   style:
                                       TextStyle(fontWeight: FontWeight.bold)),
                             ),
-                            ...bannedIPs.map((ip) => ListTile(
-                                  title: Text(ip),
+                            ...bannedIPs.map((bannedClient) => ListTile(
+                                  title: Text(bannedClient['ip'] as String),
+                                  subtitle: Text(
+                                      '拉取: ${bannedClient['fetchCount']} | 推送: ${bannedClient['pushCount']}'),
                                   leading: const Icon(Icons.block,
                                       color: Colors.red),
                                   trailing: IconButton(
@@ -1194,10 +1199,10 @@ class _EditorScreenState extends State<EditorScreen> {
                                       // 使用 Future.microtask 确保在菜单关闭后再移除黑名单
                                       Future.microtask(() {
                                         final success = _socketService
-                                            .removeFromBlacklist(ip);
+                                            .removeFromBlacklist(bannedClient);
                                         if (mounted) {
                                           if (success) {
-                                            _showInfo('已从黑名单中移除 $ip');
+                                            _showInfo('已从黑名单中移除 ${bannedClient['ip']}');
                                             // 刷新菜单
                                             // 使用setState刷新界面，而不是直接调用_showSocketServerMenu
                                             setState(() {});

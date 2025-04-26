@@ -21,6 +21,7 @@ enum SocketEventType {
   clientBanned, // 客户端被禁止
   blacklistChanged, // 黑名单变化
   serverError, // 服务器异常
+  statsChanged, // 统计数据变化
 }
 
 /// Socket事件数据结构
@@ -84,6 +85,10 @@ class SocketService with WidgetsBindingObserver {
   // 客户端 ping 超时计时器
   // 同时用于判断是否有待处理的 ping（如果 _pingTimers[socket] 不为 null，则表示有待处理的 ping）
   final Map<WebSocket, Timer> _pingTimers = {};
+
+  // 客户端请求统计（以IP地址为键）
+  // 包含 fetch 和 push 请求的次数
+  final Map<String, Map<String, int>> _clientRequestStats = {};
 
   // 注意：我们不需要额外的集合来跟踪已处理的断开连接客户端
   // 可以直接通过检查 _clients 是否包含对应的 socket 来判断是否已经处理过
@@ -212,6 +217,9 @@ class SocketService with WidgetsBindingObserver {
       _authenticatedClients.clear();
       _pingTimers.clear();
 
+      // 清空请求统计
+      _clientRequestStats.clear();
+
       // 关闭服务器
       await _server!.close();
       _server = null;
@@ -219,6 +227,37 @@ class SocketService with WidgetsBindingObserver {
     }
 
     status.value = SocketServiceStatus.stopped;
+  }
+
+  /// 更新客户端请求统计
+  void _updateClientRequestStats(WebSocket socket, String requestType) {
+    final ip = _clientIPs[socket];
+    if (ip != null) {
+      // 如果IP不存在于统计中，初始化统计数据
+      if (!_clientRequestStats.containsKey(ip)) {
+        _clientRequestStats[ip] = {
+          'fetch': 0,
+          'push': 0,
+        };
+      }
+
+      // 更新对应请求类型的计数
+      if (requestType == 'fetch' || requestType == 'push') {
+        _clientRequestStats[ip]![requestType] = (_clientRequestStats[ip]![requestType] ?? 0) + 1;
+
+        // 发送统计数据变化事件
+        _eventController.add(SocketEvent(
+          type: SocketEventType.statsChanged,
+          content: ip,
+          socket: socket,
+        ));
+      }
+    }
+  }
+
+  /// 获取客户端请求统计
+  Map<String, int>? getClientRequestStats(String ip) {
+    return _clientRequestStats[ip];
   }
 
   /// 处理WebSocket请求
@@ -324,7 +363,7 @@ class SocketService with WidgetsBindingObserver {
       try {
         final Map<String, dynamic> data = jsonDecode(message);
         final String type = data['type'];
-        
+
         // 取消该客户端的 ping 超时计时器
           _pingTimers[socket]?.cancel();
           _pingTimers.remove(socket);
@@ -367,11 +406,17 @@ class SocketService with WidgetsBindingObserver {
 
         // 处理其他请求
         if (type == 'fetch') {
+          // 更新请求统计
+          _updateClientRequestStats(socket, 'fetch');
+
           _eventController.add(SocketEvent(
             type: SocketEventType.fetch,
             socket: socket,
           ));
         } else if (type == 'push') {
+          // 更新请求统计
+          _updateClientRequestStats(socket, 'push');
+
           final String content = data['content'] ?? '';
           _eventController.add(SocketEvent(
             type: SocketEventType.push,
@@ -540,7 +585,7 @@ class SocketService with WidgetsBindingObserver {
     }
   }
 
-  /// 强制检查服务器状态，特别用于从后台恢复时。 
+  /// 强制检查服务器状态，特别用于从后台恢复时。
   Future<void> _forceCheckServerStatus() async {
     // 如果服务器实例为空，触发关闭事件
     if (_server == null) {
@@ -724,10 +769,15 @@ class SocketService with WidgetsBindingObserver {
       final ip = _clientIPs[socket] ?? '未知IP';
       final authenticated = _authenticatedClients.contains(socket);
 
+      // 获取请求统计
+      final stats = _clientRequestStats[ip] ?? {'fetch': 0, 'push': 0};
+
       clientsInfo.add({
         'socket': socket,
         'ip': ip,
         'authenticated': authenticated,
+        'fetchCount': stats['fetch'] ?? 0,
+        'pushCount': stats['push'] ?? 0,
       });
     }
 
@@ -782,9 +832,22 @@ class SocketService with WidgetsBindingObserver {
     }
   }
 
-  /// 获取已禁止的客户端列表
-  List<String> getBannedIPs() {
-    return _blacklistedIPs.toList();
+  /// 获取已禁止的客户端列表（包含统计信息）
+  List<Map<String, dynamic>> getBannedIPs() {
+    List<Map<String, dynamic>> result = [];
+
+    for (var ip in _blacklistedIPs) {
+      // 获取请求统计
+      final stats = _clientRequestStats[ip] ?? {'fetch': 0, 'push': 0};
+
+      result.add({
+        'ip': ip,
+        'fetchCount': stats['fetch'] ?? 0,
+        'pushCount': stats['push'] ?? 0,
+      });
+    }
+
+    return result;
   }
 
   /// 清空黑名单
@@ -793,7 +856,20 @@ class SocketService with WidgetsBindingObserver {
   }
 
   /// 从黑名单中移除指定IP地址
-  bool removeFromBlacklist(String ip) {
+  ///
+  /// [ipOrMap] 可以是字符串IP地址或包含IP地址的Map
+  bool removeFromBlacklist(dynamic ipOrMap) {
+    String ip;
+
+    // 判断参数类型
+    if (ipOrMap is String) {
+      ip = ipOrMap;
+    } else if (ipOrMap is Map<String, dynamic> && ipOrMap.containsKey('ip')) {
+      ip = ipOrMap['ip'] as String;
+    } else {
+      return false;
+    }
+
     final result = _blacklistedIPs.remove(ip);
     if (result) {
       // 触发黑名单变化事件
