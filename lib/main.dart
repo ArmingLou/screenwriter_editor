@@ -946,7 +946,10 @@ class _EditorScreenState extends State<EditorScreen> {
     final autoStart = prefs.getBool('socket_auto_start') ?? false;
     if (autoStart) {
       final port = prefs.getInt('socket_port') ?? 8080;
-      final password = prefs.getString('socket_password');
+
+      // 获取密码设置
+      final passwordEnabled = prefs.getBool('socket_password_enabled') ?? false;
+      final password = passwordEnabled ? prefs.getString('socket_password') : null;
 
       // 获取自定义盐值设置
       final customSaltEnabled = prefs.getBool('custom_salt_enabled') ?? false;
@@ -986,8 +989,10 @@ class _EditorScreenState extends State<EditorScreen> {
 
     // 获取密码信息
     SharedPreferences.getInstance().then((prefs) async {
+      // 获取密码设置
+      final passwordEnabled = prefs.getBool('socket_password_enabled') ?? false;
       final password = prefs.getString('socket_password') ?? '';
-      final hasPassword = password.isNotEmpty;
+      final hasPassword = passwordEnabled && password.isNotEmpty;
 
       // 获取自定义盐值设置
       final customSaltEnabled = prefs.getBool('custom_salt_enabled') ?? false;

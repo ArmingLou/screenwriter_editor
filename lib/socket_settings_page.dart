@@ -95,12 +95,14 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
     // 加载密码设置
     final savedPassword = prefs.getString('socket_password') ?? '';
     _passwordController.text = savedPassword;
-    _passwordEnabled = savedPassword.isNotEmpty;
+
+    // 加载密码启用状态（如果之前保存过）
+    _passwordEnabled = prefs.getBool('socket_password_enabled') ?? savedPassword.isNotEmpty;
 
     // 加载自定义盐值设置
-    _customSaltEnabled = prefs.getBool('custom_salt_enabled') ?? false;
     final savedSalt = prefs.getString('custom_salt') ?? '';
     _saltController.text = savedSalt;
+    _customSaltEnabled = prefs.getBool('custom_salt_enabled') ?? savedSalt.isNotEmpty;
 
     // 获取本地IP地址
     _ipAddresses = await _socketService.getLocalIpAddresses();
@@ -131,13 +133,15 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
     await prefs.setBool('socket_auto_start', _autoStart);
 
     // 保存密码设置
-    final password = _passwordEnabled ? _passwordController.text : '';
-    await prefs.setString('socket_password', password);
+    // 无论是否启用密码，都保存密码值
+    await prefs.setString('socket_password', _passwordController.text);
+    // 单独保存密码启用状态
+    await prefs.setBool('socket_password_enabled', _passwordController.text.isEmpty ? false : _passwordEnabled);
 
     // 保存自定义盐值设置
-    await prefs.setBool('custom_salt_enabled', _customSaltEnabled);
-    final salt = _customSaltEnabled ? _saltController.text : '';
-    await prefs.setString('custom_salt', salt);
+    await prefs.setBool('custom_salt_enabled', _saltController.text.isEmpty ? false : _customSaltEnabled);
+    // final salt = _customSaltEnabled ? _saltController.text : '';
+    await prefs.setString('custom_salt', _saltController.text);
 
     // 清除缓存的盐值并强制重新加载
     AuthUtils.clearCachedSalt();
@@ -199,13 +203,15 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
         await prefs.setInt('socket_port', port);
 
         // 保存密码设置
-        final savedPassword = _passwordEnabled ? _passwordController.text : '';
-        await prefs.setString('socket_password', savedPassword);
+        // 无论是否启用密码，都保存密码值
+        await prefs.setString('socket_password', _passwordController.text);
+        // 单独保存密码启用状态
+        await prefs.setBool('socket_password_enabled', _passwordController.text.isEmpty ? false : _passwordEnabled);
 
         // 保存自定义盐值设置
-        await prefs.setBool('custom_salt_enabled', _customSaltEnabled);
-        final savedSalt = _customSaltEnabled ? _saltController.text : '';
-        await prefs.setString('custom_salt', savedSalt);
+        await prefs.setBool('custom_salt_enabled', _saltController.text.isEmpty ? false : _customSaltEnabled);
+        // final savedSalt = _customSaltEnabled ? _saltController.text : '';
+        await prefs.setString('custom_salt', _saltController.text);
 
         // 清除缓存的盐值并强制重新加载
         AuthUtils.clearCachedSalt();
@@ -607,14 +613,14 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
         title: const Text('远程同步 · 服务端'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () async {
+          onPressed: () {
             // 在返回前保存配置
             if (_socketService.status.value != SocketServiceStatus.running) {
-              await _saveSettings(showSnackBar: false);
+              // 先保存配置
+              _saveSettings(showSnackBar: false);
             }
-            if (mounted) {
-              Navigator.of(context).pop();
-            }
+            // 无论是否保存配置，都返回
+            Navigator.of(context).pop();
           },
         ),
       ),
