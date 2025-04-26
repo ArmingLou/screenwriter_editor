@@ -1003,18 +1003,19 @@ class _EditorScreenState extends State<EditorScreen> {
                         children: [
                           ListTile(
                             title: const Text('作为服务器已启动'),
-                            subtitle: Text('端口: $port'),
+                            subtitle: Text(
+                                '端口: $port${hasPassword ? '    密码: $password' : '    [无密码]'}'),
                             leading: const Icon(Icons.cloud_circle,
                                 color: Colors.green),
                           ),
-                          if (hasPassword)
-                            ListTile(
-                              title: const Text('密码验证'),
-                              subtitle: Text('当前密码: $password'),
-                              leading: const Icon(Icons.password,
-                                  color: Colors.orange),
-                            ),
-                          const Divider(),
+                          // if (hasPassword)
+                          //   ListTile(
+                          //     title: const Text('密码验证'),
+                          //     subtitle: Text('当前密码: $password'),
+                          //     leading: const Icon(Icons.password,
+                          //         color: Colors.orange),
+                          //   ),
+                          // const Divider(),
 
                           // 连接地址部分
                           FutureBuilder<List<String>>(
@@ -1043,17 +1044,19 @@ class _EditorScreenState extends State<EditorScreen> {
                                 return Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Padding(
-                                      padding: EdgeInsets.only(
-                                          left: 16, top: 8, bottom: 8),
-                                      child: Text('本服务器连接地址:',
-                                          style: TextStyle(
-                                              fontWeight: FontWeight.bold)),
-                                    ),
+                                    // const Padding(
+                                    //   padding: EdgeInsets.only(
+                                    //       left: 16, top: 8, bottom: 8),
+                                    //   child: Text('本服务器连接地址:',
+                                    //       style: TextStyle(
+                                    //           fontWeight: FontWeight.bold)),
+                                    // ),
                                     ...snapshot.data!.map((ip) => ListTile(
                                           title: Text('ws://$ip:$port'),
-                                          leading: const Icon(Icons.link,
-                                              color: Colors.blue),
+                                          leading: SizedBox(
+                                            width: 24,
+                                            height: 24,
+                                          ),
                                           trailing: IconButton(
                                             icon: const Icon(Icons.copy),
                                             onPressed: () {
@@ -1102,9 +1105,8 @@ class _EditorScreenState extends State<EditorScreen> {
                                           // 使用 Future.microtask 确保在菜单关闭后再禁止客户端
                                           Future.microtask(() async {
                                             final success = await _socketService
-                                                .banClient(
-                                                    client['socket']
-                                                        as WebSocket);
+                                                .banClient(client['socket']
+                                                    as WebSocket);
                                             if (mounted) {
                                               if (success) {
                                                 _showInfo('已禁止客户端连接');
@@ -1202,7 +1204,8 @@ class _EditorScreenState extends State<EditorScreen> {
                                             .removeFromBlacklist(bannedClient);
                                         if (mounted) {
                                           if (success) {
-                                            _showInfo('已从黑名单中移除 ${bannedClient['ip']}');
+                                            _showInfo(
+                                                '已从黑名单中移除 ${bannedClient['ip']}');
                                             // 刷新菜单
                                             // 使用setState刷新界面，而不是直接调用_showSocketServerMenu
                                             setState(() {});
@@ -1324,15 +1327,21 @@ class _EditorScreenState extends State<EditorScreen> {
     });
   }
 
-
-
   // 显示增强版Socket客户端操作菜单
   Future<void> _showEnhancedSocketClientMenu(BuildContext context) async {
     // 检查组件是否仍然挂载
     if (!mounted) return;
 
+    // 在异步操作前获取屏幕高度
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    // 保存菜单上下文，用于在连接断开时关闭菜单
+    _socketClientMenuContext = context;
+
     final socketClient = SocketClient();
-    final isConnected = socketClient.status.value == SocketClientStatus.connected;
+    final isConnected =
+        socketClient.status.value == SocketClientStatus.connected;
+    final isError = socketClient.status.value == SocketClientStatus.error;
     final currentServer = socketClient.currentServer;
 
     // 获取默认服务器
@@ -1341,44 +1350,219 @@ class _EditorScreenState extends State<EditorScreen> {
     // 再次检查组件是否仍然挂载
     if (!mounted) return;
 
-    // 保存菜单上下文，用于在连接断开时关闭菜单
-    _socketClientMenuContext = context;
-
     // 使用当前上下文显示菜单
     await showModalBottomSheet(
       context: context,
+      isScrollControlled: true, // 允许控制滚动行为
+      constraints: BoxConstraints(
+        maxHeight: screenHeight * 0.9, // 设置最大高度为屏幕高度的90%
+      ),
       builder: (context) => StatefulBuilder(
         builder: (BuildContext context, StateSetter setState) {
           return Container(
             padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 标题
-                const Text(
-                  '远程同步',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+            // 使用 SingleChildScrollView 包裹 Column，使内容可滚动
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 标题
+                  const Text(
+                    '远程同步',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
 
-                // 服务器信息卡片
-                Card(
-                  color: isConnected ? Colors.green.withAlpha(25) : Colors.blue.withAlpha(25),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // 服务器信息
-                        Row(
+                  // 服务器信息卡片
+                  Card(
+                    color: isConnected
+                        ? const Color.fromARGB(255, 16, 25, 17).withAlpha(25)
+                        : Colors.blue.withAlpha(25),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // 服务器信息
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.computer,
+                                color: isConnected ? Colors.green : Colors.blue,
+                                size: 24,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      isConnected
+                                          ? '已连接到 ${currentServer?.name ?? "未知服务器"}'
+                                          : defaultServer != null
+                                              ? '默认服务器: ${defaultServer.name}'
+                                              : '未设置默认服务器',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      isConnected
+                                          ? '${currentServer?.host}:${currentServer?.port}${currentServer?.password != null ? '  [${currentServer?.password}]' : '  [无密码]'}'
+                                          : defaultServer != null
+                                              ? '${defaultServer.host}:${defaultServer.port}${defaultServer.password != null ? '  [${defaultServer.password}]' : '  [无密码]'}'
+                                              : '请先配置服务器',
+                                      style: TextStyle(
+                                        color: Colors.grey[600],
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              // 状态标记
+                              if (isConnected)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Text(
+                                    '已连接',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 12),
+
+                          // 操作按钮
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              if (isConnected)
+                                // 断开连接按钮
+                                ElevatedButton.icon(
+                                  icon: const Icon(Icons.link_off, size: 18),
+                                  label: const Text('断开连接'),
+                                  onPressed: () {
+                                    // 先获取 context 的引用
+                                    final currentContext = context;
+                                    // 先关闭菜单，再断开连接
+                                    Navigator.pop(currentContext);
+                                    // 使用 Future.microtask 确保在菜单关闭后再断开连接
+                                    Future.microtask(() async {
+                                      await socketClient.disconnect();
+                                      if (mounted) {
+                                        _showInfo('已断开连接');
+                                      }
+                                    });
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.red,
+                                    foregroundColor: Colors.white,
+                                  ),
+                                )
+                              else if (defaultServer != null)
+                                // 连接按钮
+                                // ElevatedButton.icon(
+                                //   icon: const Icon(Icons.link, size: 18),
+                                //   label: const Text('连接'),
+                                //   onPressed: () {
+                                //     // 先获取 context 的引用
+                                //     final currentContext = context;
+                                //     // 先关闭菜单，再连接
+                                //     Navigator.pop(currentContext);
+                                //     // 使用 Future.microtask 确保在菜单关闭后再连接
+                                //     Future.microtask(() async {
+                                //       if (mounted) {
+                                //         _showInfo('正在连接到默认服务器...');
+                                //       }
+
+                                //       // 使用带回调的通用连接方法
+                                //       await socketClient.connectToDefaultServer(
+                                //         onSuccess: () {
+                                //           if (mounted) {
+                                //             _showInfo('已连接到默认服务器');
+                                //           }
+                                //         },
+                                //         // onFailure: (error) {
+                                //         //   if (mounted) {
+                                //         //     _showError('连接失败: $error');
+                                //         //   }
+                                //         // },
+                                //       );
+                                //     });
+                                //   },
+                                //   style: ElevatedButton.styleFrom(
+                                //     backgroundColor: Colors.blue,
+                                //     foregroundColor: Colors.white,
+                                //   ),
+                                // ),
+                                // 只在未连接状态下显示配置按钮
+                                if (!isConnected) ...[
+                                  const SizedBox(width: 8),
+                                  // 配置按钮
+                                  ElevatedButton.icon(
+                                    icon: const Icon(Icons.settings, size: 18),
+                                    label: const Text('配置'),
+                                    onPressed: () {
+                                      // 先获取 context 的引用
+                                      final currentContext = context;
+                                      // 先关闭菜单，再打开配置页面
+                                      Navigator.pop(currentContext);
+                                      // 使用 Future.microtask 确保在菜单关闭后再打开配置页面
+                                      // 使用 WidgetsBinding.instance.addPostFrameCallback 确保在下一帧执行
+                                      WidgetsBinding.instance
+                                          .addPostFrameCallback((_) {
+                                        if (mounted) {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  const SocketClientPage(),
+                                            ),
+                                          );
+                                        }
+                                      });
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.grey,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // 错误信息卡片
+                  if (isError)
+                    Card(
+                      color: Colors.red.withAlpha(25),
+                      margin: const EdgeInsets.only(top: 8, bottom: 8),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
                           children: [
-                            Icon(
-                              Icons.computer,
-                              color: isConnected ? Colors.green : Colors.blue,
+                            const Icon(
+                              Icons.error_outline,
+                              color: Colors.red,
                               size: 24,
                             ),
                             const SizedBox(width: 12),
@@ -1386,266 +1570,145 @@ class _EditorScreenState extends State<EditorScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    isConnected
-                                      ? '已连接到 ${currentServer?.name ?? "未知服务器"}'
-                                      : defaultServer != null
-                                        ? '默认服务器: ${defaultServer.name}'
-                                        : '未设置默认服务器',
-                                    style: const TextStyle(
+                                  const Text(
+                                    '连接错误',
+                                    style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 16,
+                                      color: Colors.red,
                                     ),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    isConnected
-                                      ? '${currentServer?.host}:${currentServer?.port}'
-                                      : defaultServer != null
-                                        ? '${defaultServer.host}:${defaultServer.port}'
-                                        : '请先配置服务器',
+                                    socketClient.errorMessage ??
+                                        '无法连接到服务器，请检查网络或服务器配置',
                                     style: TextStyle(
-                                      color: Colors.grey[600],
+                                      color: Colors.grey[700],
                                       fontSize: 14,
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                            // 状态标记
-                            if (isConnected)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.green,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: const Text(
-                                  '已连接',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
                           ],
                         ),
-
-                        const SizedBox(height: 12),
-
-                        // 操作按钮
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            if (isConnected)
-                              // 断开连接按钮
-                              ElevatedButton.icon(
-                                icon: const Icon(Icons.link_off, size: 18),
-                                label: const Text('断开连接'),
-                                onPressed: () {
-                                  // 先获取 context 的引用
-                                  final currentContext = context;
-                                  // 先关闭菜单，再断开连接
-                                  Navigator.pop(currentContext);
-                                  // 使用 Future.microtask 确保在菜单关闭后再断开连接
-                                  Future.microtask(() async {
-                                    await socketClient.disconnect();
-                                    if (mounted) {
-                                      _showInfo('已断开连接');
-                                    }
-                                  });
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red,
-                                  foregroundColor: Colors.white,
-                                ),
-                              )
-                            else if (defaultServer != null)
-                              // 连接按钮
-                              ElevatedButton.icon(
-                                icon: const Icon(Icons.link, size: 18),
-                                label: const Text('连接'),
-                                onPressed: () {
-                                  // 先获取 context 的引用
-                                  final currentContext = context;
-                                  // 先关闭菜单，再连接
-                                  Navigator.pop(currentContext);
-                                  // 使用 Future.microtask 确保在菜单关闭后再连接
-                                  Future.microtask(() async {
-                                    if (mounted) {
-                                      _showInfo('正在连接到默认服务器...');
-                                    }
-
-                                    // 使用带回调的通用连接方法
-                                    await socketClient.connectToDefaultServer(
-                                      onSuccess: () {
-                                        if (mounted) {
-                                          _showInfo('已连接到默认服务器');
-                                        }
-                                      },
-                                      // onFailure: (error) {
-                                      //   if (mounted) {
-                                      //     _showError('连接失败: $error');
-                                      //   }
-                                      // },
-                                    );
-                                  });
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.blue,
-                                  foregroundColor: Colors.white,
-                                ),
-                              ),
-                            // 只在未连接状态下显示配置按钮
-                            if (!isConnected) ...[
-                              const SizedBox(width: 8),
-                              // 配置按钮
-                              ElevatedButton.icon(
-                                icon: const Icon(Icons.settings, size: 18),
-                                label: const Text('配置'),
-                                onPressed: () {
-                                  // 先获取 context 的引用
-                                  final currentContext = context;
-                                  // 先关闭菜单，再打开配置页面
-                                  Navigator.pop(currentContext);
-                                  // 使用 Future.microtask 确保在菜单关闭后再打开配置页面
-                                  // 使用 WidgetsBinding.instance.addPostFrameCallback 确保在下一帧执行
-                                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                                    if (mounted) {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => const SocketClientPage(),
-                                        ),
-                                      );
-                                    }
-                                  });
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.grey,
-                                  foregroundColor: Colors.white,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ],
+                      ),
                     ),
+
+                  const Divider(),
+
+                  // 操作按钮
+                  ListTile(
+                    title: const Text('推送内容'),
+                    subtitle: const Text('将当前编辑器内容推送到远程服务器'),
+                    leading: const Icon(Icons.upload, color: Colors.blue),
+                    onTap: () {
+                      // 先获取 context 的引用
+                      final currentContext = context;
+
+                      // 先关闭菜单
+                      Navigator.pop(currentContext);
+
+                      // 使用 Future.microtask 确保在菜单关闭后再执行
+                      Future.microtask(() async {
+                        if (defaultServer != null) {
+                          if (!isConnected && mounted) {
+                            _showInfo('正在连接到默认服务器...');
+                          }
+
+                          // 使用通用的连接并执行操作方法
+                          await socketClient.connectAndExecute(
+                            action: () {
+                              if (mounted) {
+                                // 连接成功后推送内容
+                                final content = _docText();
+                                socketClient.pushContent(content);
+                                _showInfo('内容已推送');
+                              }
+                            },
+                            // onConnectionFailure: (error) {
+                            //   if (mounted) {
+                            //     _showError('连接失败: $error');
+                            //   }
+                            // },
+                          );
+                        } else {
+                          // 没有默认服务器，提示配置
+                          if (mounted) {
+                            _showError('请先配置默认服务器');
+                            // 打开配置页面
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted) {
+                                Navigator.push(
+                                  currentContext,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const SocketClientPage(),
+                                  ),
+                                );
+                              }
+                            });
+                          }
+                        }
+                      });
+                    },
                   ),
-                ),
+                  ListTile(
+                    title: const Text('拉取内容'),
+                    subtitle: const Text('从远程服务器获取内容并替换当前编辑器'),
+                    leading: const Icon(Icons.download, color: Colors.green),
+                    onTap: () {
+                      // 先获取 context 的引用
+                      final currentContext = context;
 
-                const Divider(),
+                      // 先关闭菜单
+                      Navigator.pop(currentContext);
 
-                // 操作按钮
-                ListTile(
-                  title: const Text('推送内容'),
-                  subtitle: const Text('将当前编辑器内容推送到远程服务器'),
-                  leading: const Icon(Icons.upload, color: Colors.blue),
-                  onTap: () {
-                    // 先获取 context 的引用
-                    final currentContext = context;
+                      // 使用 Future.microtask 确保在菜单关闭后再执行
+                      Future.microtask(() async {
+                        if (defaultServer != null) {
+                          if (!isConnected && mounted) {
+                            _showInfo('正在连接到默认服务器...');
+                          }
 
-                    // 先关闭菜单
-                    Navigator.pop(currentContext);
-
-                    // 使用 Future.microtask 确保在菜单关闭后再执行
-                    Future.microtask(() async {
-                      if (defaultServer != null) {
-                        if (!isConnected && mounted) {
-                          _showInfo('正在连接到默认服务器...');
+                          // 使用通用的连接并执行操作方法
+                          await socketClient.connectAndExecute(
+                            action: () {
+                              if (mounted) {
+                                // 连接成功后拉取内容
+                                socketClient.fetchContent();
+                                _showInfo('正在拉取内容...');
+                              }
+                            },
+                            // onConnectionFailure: (error) {
+                            //   if (mounted) {
+                            //     _showError('连接失败: $error');
+                            //   }
+                            // },
+                          );
+                        } else {
+                          // 没有默认服务器，提示配置
+                          if (mounted) {
+                            _showError('请先配置默认服务器');
+                            // 打开配置页面
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted) {
+                                Navigator.push(
+                                  currentContext,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const SocketClientPage(),
+                                  ),
+                                );
+                              }
+                            });
+                          }
                         }
-
-                        // 使用通用的连接并执行操作方法
-                        await socketClient.connectAndExecute(
-                          action: () {
-                            if (mounted) {
-                              // 连接成功后推送内容
-                              final content = _docText();
-                              socketClient.pushContent(content);
-                              _showInfo('内容已推送');
-                            }
-                          },
-                          // onConnectionFailure: (error) {
-                          //   if (mounted) {
-                          //     _showError('连接失败: $error');
-                          //   }
-                          // },
-                        );
-                      } else {
-                        // 没有默认服务器，提示配置
-                        if (mounted) {
-                          _showError('请先配置默认服务器');
-                          // 打开配置页面
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (mounted) {
-                              Navigator.push(
-                                currentContext,
-                                MaterialPageRoute(
-                                  builder: (context) => const SocketClientPage(),
-                                ),
-                              );
-                            }
-                          });
-                        }
-                      }
-                    });
-                  },
-                ),
-                ListTile(
-                  title: const Text('拉取内容'),
-                  subtitle: const Text('从远程服务器获取内容并替换当前编辑器'),
-                  leading: const Icon(Icons.download, color: Colors.green),
-                  onTap: () {
-                    // 先获取 context 的引用
-                    final currentContext = context;
-
-                    // 先关闭菜单
-                    Navigator.pop(currentContext);
-
-                    // 使用 Future.microtask 确保在菜单关闭后再执行
-                    Future.microtask(() async {
-                      if (defaultServer != null) {
-                        if (!isConnected && mounted) {
-                          _showInfo('正在连接到默认服务器...');
-                        }
-
-                        // 使用通用的连接并执行操作方法
-                        await socketClient.connectAndExecute(
-                          action: () {
-                            if (mounted) {
-                              // 连接成功后拉取内容
-                              socketClient.fetchContent();
-                              _showInfo('正在拉取内容...');
-                            }
-                          },
-                          // onConnectionFailure: (error) {
-                          //   if (mounted) {
-                          //     _showError('连接失败: $error');
-                          //   }
-                          // },
-                        );
-                      } else {
-                        // 没有默认服务器，提示配置
-                        if (mounted) {
-                          _showError('请先配置默认服务器');
-                          // 打开配置页面
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (mounted) {
-                              Navigator.push(
-                                currentContext,
-                                MaterialPageRoute(
-                                  builder: (context) => const SocketClientPage(),
-                                ),
-                              );
-                            }
-                          });
-                        }
-                      }
-                    });
-                  },
-                ),
-              ],
+                      });
+                    },
+                  ),
+                ],
+              ),
             ),
           );
         },
@@ -3337,6 +3400,7 @@ Metadata: {
                     builder: (context, status, _) {
                       final isConnected =
                           status == SocketClientStatus.connected;
+                      final isError = status == SocketClientStatus.error;
                       return Material(
                         color: Colors.transparent,
                         child: InkWell(
@@ -3345,16 +3409,20 @@ Metadata: {
                             width: 30,
                             height: 24,
                             child: Icon(
-                              isConnected
-                                  ? Icons.import_export_outlined
-                                  : Icons.import_export_outlined,
+                              isError
+                                  ? Icons.mobiledata_off
+                                  : isConnected
+                                      ? Icons.import_export_outlined
+                                      : Icons.import_export_outlined,
                               color: isConnected ? Colors.green : Colors.black,
                               size: 18,
                             ),
                           ),
                           onTap: () {
                             // 获取默认服务器
-                            SocketClient().getDefaultServer().then((defaultServer) {
+                            SocketClient()
+                                .getDefaultServer()
+                                .then((defaultServer) {
                               // 使用 WidgetsBinding.instance.addPostFrameCallback 确保在下一帧执行
                               WidgetsBinding.instance.addPostFrameCallback((_) {
                                 if (!mounted) return;
@@ -3364,7 +3432,8 @@ Metadata: {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => const SocketClientPage(),
+                                      builder: (context) =>
+                                          const SocketClientPage(),
                                     ),
                                   );
                                 } else {

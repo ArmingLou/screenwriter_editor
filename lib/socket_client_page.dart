@@ -3,6 +3,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'socket_client.dart';
 
+/// IP冲突处理选项
+enum IpConflictAction {
+  replace, // 替换冲突的服务器
+  cancel,  // 取消操作
+}
+
 class SocketClientPage extends StatefulWidget {
   const SocketClientPage({super.key});
 
@@ -21,6 +27,7 @@ class _SocketClientPageState extends State<SocketClientPage> {
   bool _isLoading = true;
   bool _isEditing = false;
   bool _useFullScroll = false; // 是否使用整体滚动布局
+  RemoteServerConfig? _originalServer; // 保存原始服务器配置，用于编辑模式
 
   // 创建焦点节点来管理输入框的焦点
   final FocusNode _nameFocusNode = FocusNode();
@@ -204,12 +211,18 @@ class _SocketClientPageState extends State<SocketClientPage> {
       _hostController.text = server.host;
       _portController.text = server.port.toString();
       _passwordController.text = server.password ?? '';
+
+      // 保存原始服务器信息，用于在保存时检查是否为默认服务器
+      _originalServer = server;
     } else {
       // 新建模式，清空输入框
       _nameController.clear();
       _hostController.clear(); // 先清空
       _portController.text = '8080'; // 默认端口
       _passwordController.clear();
+
+      // 清除原始服务器信息
+      _originalServer = null;
 
       // 尝试获取当前局域网IP地址并自动填充
       // 使用Future.microtask确保在对话框显示后再获取IP地址
@@ -309,14 +322,55 @@ class _SocketClientPageState extends State<SocketClientPage> {
       return;
     }
 
+    // 确定是否应该设置为默认服务器
+    bool shouldBeDefault = false;
+
+    // 如果是编辑模式，检查原服务器是否为默认服务器
+    if (_isEditing && _originalServer != null) {
+      shouldBeDefault = _originalServer!.isDefault;
+
+      // 如果IP地址或端口发生了变化，需要删除旧的服务器配置
+      if (_originalServer!.host != host || _originalServer!.port != port) {
+        // 创建一个临时变量，用于删除旧的服务器配置
+        final oldServer = _originalServer!;
+
+        // 删除旧的服务器配置
+        await _socketClient.deleteServerConfig(oldServer);
+      }
+    }
+
     // 创建服务器配置
-    final config = RemoteServerConfig(
+    var config = RemoteServerConfig(
       name: name,
       host: host,
       port: port,
       password: password.isNotEmpty ? password : null,
-      // 不再手动设置默认服务器，由 SocketClient 类自动处理
+      isDefault: shouldBeDefault, // 如果原来是默认服务器，保持默认状态
     );
+
+    // 检查IP冲突
+    final conflictServers = await _checkIpConflict(config);
+
+    if (conflictServers.isNotEmpty) {
+      // 检查冲突的服务器中是否有默认服务器
+      bool hasDefaultInConflicts = conflictServers.any((server) => server.isDefault);
+
+      // 如果有冲突，显示确认对话框
+      final action = await _showIpConflictDialog(conflictServers, config);
+
+      if (action == IpConflictAction.cancel) {
+        // 用户选择取消操作
+        return;
+      } else if (action == IpConflictAction.replace) {
+        // 如果冲突的服务器中有默认服务器，新服务器也应该是默认服务器
+        if (hasDefaultInConflicts) {
+          config = config.copyWith(isDefault: true);
+        }
+
+        // 用户选择替换，需要删除冲突的服务器
+        await _socketClient.deleteServerConfigs(conflictServers);
+      }
+    }
 
     // 保存配置
     final success = await _socketClient.saveServerConfig(config);
@@ -327,6 +381,81 @@ class _SocketClientPageState extends State<SocketClientPage> {
     } else {
       _showSnackBar('保存服务器配置失败', color: Colors.red);
     }
+  }
+
+  /// 检查IP冲突
+  ///
+  /// 返回与给定配置IP地址相同的服务器列表
+  Future<List<RemoteServerConfig>> _checkIpConflict(RemoteServerConfig config) async {
+    // 加载所有保存的服务器
+    final allServers = await _socketClient.loadSavedServers();
+
+    // 查找IP相同的服务器（不考虑端口）
+    final conflictServers = allServers.where((server) {
+      // 如果是编辑模式，排除原始服务器
+      if (_isEditing && _originalServer != null) {
+        // 排除完全相同的服务器（IP和端口都相同）
+        if (server.host == _originalServer!.host && server.port == _originalServer!.port) {
+          return false;
+        }
+        // 注意：如果IP或端口发生了变化，我们已经在_saveServer中删除了旧的服务器配置
+      }
+
+      // 检查IP是否相同
+      return server.host == config.host;
+    }).toList();
+
+    return conflictServers;
+  }
+
+
+
+  /// 显示IP冲突确认对话框
+  Future<IpConflictAction> _showIpConflictDialog(
+    List<RemoteServerConfig> conflictServers,
+    RemoteServerConfig newConfig
+  ) async {
+    final result = await showDialog<IpConflictAction>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('IP地址冲突'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('IP地址 "${newConfig.host}" 已存在于以下服务器配置中:'),
+              const SizedBox(height: 12),
+              ...conflictServers.map((server) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text('• ${server.name} (${server.host}:${server.port})'),
+              )),
+              const SizedBox(height: 12),
+              const Text('是否要替换这些配置？'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop(IpConflictAction.cancel);
+            },
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop(IpConflictAction.replace);
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+            child: const Text('替换'),
+          ),
+        ],
+      ),
+    );
+
+    return result ?? IpConflictAction.cancel;
   }
 
   Future<void> _deleteServer(RemoteServerConfig server) async {
@@ -564,7 +693,7 @@ class _SocketClientPageState extends State<SocketClientPage> {
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      '${server.host}:${server.port}',
+                                      '${server.host}:${server.port}${server.password != null ? '  [${server.password}]' : '  [无密码]'}',
                                       style: TextStyle(
                                         color: Colors.grey[600],
                                         fontSize: 14,

@@ -176,12 +176,6 @@ class SocketClient with WidgetsBindingObserver {
       // 加载现有配置
       await loadSavedServers();
 
-      // 检查是否已存在相同配置
-      final existingIndex = _savedServers.indexWhere(
-        // (server) => server.host == config.host && server.port == config.port,
-        (server) => server.host == config.host,
-      );
-
       // 检查是否是第一个服务器，如果是，则自动将其设置为默认服务器
       bool isFirstServer = _savedServers.isEmpty;
 
@@ -200,9 +194,14 @@ class SocketClient with WidgetsBindingObserver {
         }
       }
 
-      if (existingIndex >= 0) {
-        // 更新现有配置
-        _savedServers[existingIndex] = config;
+      // 检查是否已存在相同IP和端口的配置
+      final exactMatchIndex = _savedServers.indexWhere(
+        (server) => server.host == config.host && server.port == config.port,
+      );
+
+      // 如果找到完全匹配的配置，直接更新
+      if (exactMatchIndex >= 0) {
+        _savedServers[exactMatchIndex] = config;
       } else {
         // 添加新配置
         _savedServers.add(config);
@@ -265,6 +264,54 @@ class SocketClient with WidgetsBindingObserver {
       return true;
     } catch (e) {
       debugPrint('Error deleting server config: $e');
+      return false;
+    }
+  }
+
+  /// 批量删除服务器配置
+  Future<bool> deleteServerConfigs(List<RemoteServerConfig> configs) async {
+    try {
+      // 加载现有配置
+      await loadSavedServers();
+
+      // 检查是否有默认服务器被删除
+      bool deletedDefault = false;
+
+      // 遍历要删除的配置
+      for (var config in configs) {
+        // 检查是否删除的是默认服务器
+        for (var server in _savedServers) {
+          if (server.host == config.host && server.port == config.port && server.isDefault) {
+            deletedDefault = true;
+            break;
+          }
+        }
+
+        // 移除匹配的配置
+        _savedServers.removeWhere(
+          (server) => server.host == config.host && server.port == config.port,
+        );
+      }
+
+      // 如果删除的是默认服务器，且还有其他服务器，则将第一个服务器设为默认
+      if (deletedDefault && _savedServers.isNotEmpty) {
+        _savedServers[0] = _savedServers[0].copyWith(isDefault: true);
+      }
+
+      // 如果删除后只剩一个服务器，则自动将其设置为默认服务器
+      if (_savedServers.length == 1 && !_savedServers[0].isDefault) {
+        _savedServers[0] = _savedServers[0].copyWith(isDefault: true);
+      }
+
+      // 保存到SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final serversJson =
+          _savedServers.map((server) => jsonEncode(server.toJson())).toList();
+
+      await prefs.setStringList('socket_client_servers', serversJson);
+      return true;
+    } catch (e) {
+      debugPrint('Error deleting server configs: $e');
       return false;
     }
   }
