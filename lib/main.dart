@@ -1344,7 +1344,7 @@ class _EditorScreenState extends State<EditorScreen> {
     final isError = socketClient.status.value == SocketClientStatus.error;
     final currentServer = socketClient.currentServer;
 
-    // 获取默认服务器
+    // 获取默认远程服务器
     final defaultServer = await socketClient.getDefaultServer();
 
     // 再次检查组件是否仍然挂载
@@ -1404,8 +1404,8 @@ class _EditorScreenState extends State<EditorScreen> {
                                       isConnected
                                           ? '已连接到 ${currentServer?.name ?? "未知服务器"}'
                                           : defaultServer != null
-                                              ? '默认服务器: ${defaultServer.name}'
-                                              : '未设置默认服务器',
+                                              ? '默认远程服务器: ${defaultServer.name}'
+                                              : '未设置默认远程服务器',
                                       style: const TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 16,
@@ -1488,14 +1488,14 @@ class _EditorScreenState extends State<EditorScreen> {
                                 //     // 使用 Future.microtask 确保在菜单关闭后再连接
                                 //     Future.microtask(() async {
                                 //       if (mounted) {
-                                //         _showInfo('正在连接到默认服务器...');
+                                //         _showInfo('正在连接到默认远程服务器...');
                                 //       }
 
                                 //       // 使用带回调的通用连接方法
                                 //       await socketClient.connectToDefaultServer(
                                 //         onSuccess: () {
                                 //           if (mounted) {
-                                //             _showInfo('已连接到默认服务器');
+                                //             _showInfo('已连接到默认远程服务器');
                                 //           }
                                 //         },
                                 //         // onFailure: (error) {
@@ -1613,7 +1613,7 @@ class _EditorScreenState extends State<EditorScreen> {
                       Future.microtask(() async {
                         if (defaultServer != null) {
                           if (!isConnected && mounted) {
-                            _showInfo('正在连接到默认服务器...');
+                            _showInfo('正在连接到默认远程服务器...');
                           }
 
                           // 使用通用的连接并执行操作方法
@@ -1633,9 +1633,9 @@ class _EditorScreenState extends State<EditorScreen> {
                             // },
                           );
                         } else {
-                          // 没有默认服务器，提示配置
+                          // 没有默认远程服务器，提示配置
                           if (mounted) {
-                            _showError('请先配置默认服务器');
+                            _showError('请先配置默认远程服务器');
                             // 打开配置页面
                             WidgetsBinding.instance.addPostFrameCallback((_) {
                               if (mounted) {
@@ -1668,7 +1668,7 @@ class _EditorScreenState extends State<EditorScreen> {
                       Future.microtask(() async {
                         if (defaultServer != null) {
                           if (!isConnected && mounted) {
-                            _showInfo('正在连接到默认服务器...');
+                            _showInfo('正在连接到默认远程服务器...');
                           }
 
                           // 使用通用的连接并执行操作方法
@@ -1687,9 +1687,9 @@ class _EditorScreenState extends State<EditorScreen> {
                             // },
                           );
                         } else {
-                          // 没有默认服务器，提示配置
+                          // 没有默认远程服务器，提示配置
                           if (mounted) {
-                            _showError('请先配置默认服务器');
+                            _showError('请先配置默认远程服务器');
                             // 打开配置页面
                             WidgetsBinding.instance.addPostFrameCallback((_) {
                               if (mounted) {
@@ -3419,7 +3419,7 @@ Metadata: {
                             ),
                           ),
                           onTap: () {
-                            // 获取默认服务器
+                            // 获取默认远程服务器
                             SocketClient()
                                 .getDefaultServer()
                                 .then((defaultServer) {
@@ -3428,7 +3428,7 @@ Metadata: {
                                 if (!mounted) return;
 
                                 if (defaultServer == null) {
-                                  // 如果没有默认服务器，直接跳转到客户端配置页
+                                  // 如果没有默认远程服务器，直接跳转到客户端配置页
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
@@ -3437,14 +3437,14 @@ Metadata: {
                                     ),
                                   );
                                 } else {
-                                  // 有默认服务器，显示操作菜单
+                                  // 有默认远程服务器，显示操作菜单
                                   _showEnhancedSocketClientMenu(context);
                                 }
                               });
                             }).catchError((e) {
                               WidgetsBinding.instance.addPostFrameCallback((_) {
                                 if (mounted) {
-                                  _showError('获取默认服务器失败: ${e.toString()}');
+                                  _showError('获取默认远程服务器失败: ${e.toString()}');
                                 }
                               });
                             });

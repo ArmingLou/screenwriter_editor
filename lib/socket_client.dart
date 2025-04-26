@@ -719,7 +719,7 @@ class SocketClient with WidgetsBindingObserver {
         debugPrint('提取到的 HTTP 状态码: ${statusCode ?? "无法提取"}');
 
         if(statusCode == 401) {
-          _handleError('连接失败，密码错误');
+          _handleError('连接失败，授权失败');
         } else if(statusCode == 403) {
           _handleError('连接失败，您已被加入黑名单');
         } else if(statusCode != null) {
