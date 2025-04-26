@@ -510,7 +510,7 @@ class SocketClient with WidgetsBindingObserver {
     }
   }
 
-  // 移除了获取盐值的方法，改为使用固定盐值
+  // 移除了获取盐值的方法，改为使用 AuthUtils.getSaltSync() 获取盐值
 
   /// 从 WebSocketException 的错误消息中提取 HTTP 状态码
   ///
@@ -597,8 +597,9 @@ class SocketClient with WidgetsBindingObserver {
 
       // 如果需要密码，准备认证头部
       if (server.password != null && server.password!.isNotEmpty) {
-        // 使用固定盐值，客户端和服务端共享
-        final salt = AuthUtils.fixedSalt;
+        // 获取盐值，优先使用自定义盐值（如果启用了），否则使用固定盐值
+        // 使用 getSaltSync 方法获取盐值，优先使用自定义盐值（如果启用了）
+        final salt = AuthUtils.getSaltSync();
 
         // 生成时间戳
         final timestamp = DateTime.now().millisecondsSinceEpoch;

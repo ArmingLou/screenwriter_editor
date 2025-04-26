@@ -23,6 +23,7 @@ import 'package:intl/intl.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:toastification/toastification.dart';
+import 'auth_utils.dart';
 
 // 自定义 Intent 类，用于拦截键盘事件
 class BlockKeyboardIntent extends Intent {
@@ -41,7 +42,13 @@ class BlockKeyboardAction extends Action<BlockKeyboardIntent> {
   }
 }
 
-void main() {
+void main() async {
+  // 确保 Flutter 初始化完成
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 预加载盐值（应用启动时不需要强制重新加载）
+  await AuthUtils.preloadSalt();
+
   runApp(const ScreenwriterEditorApp());
 }
 
@@ -940,8 +947,17 @@ class _EditorScreenState extends State<EditorScreen> {
     if (autoStart) {
       final port = prefs.getInt('socket_port') ?? 8080;
       final password = prefs.getString('socket_password');
+
+      // 获取自定义盐值设置
+      final customSaltEnabled = prefs.getBool('custom_salt_enabled') ?? false;
+      final customSalt = customSaltEnabled ? prefs.getString('custom_salt') : null;
+
+      // 清除缓存的盐值并强制重新加载
+      AuthUtils.clearCachedSalt();
+      await AuthUtils.preloadSalt(forceReload: true);
+
       final success =
-          await _socketService.startServer(port, password: password);
+          await _socketService.startServer(port, password: password, salt: customSalt);
       if (success) {
         final securityStatus =
             password != null && password.isNotEmpty ? '，已启用密码验证' : '';
@@ -973,6 +989,11 @@ class _EditorScreenState extends State<EditorScreen> {
       final password = prefs.getString('socket_password') ?? '';
       final hasPassword = password.isNotEmpty;
 
+      // 获取自定义盐值设置
+      final customSaltEnabled = prefs.getBool('custom_salt_enabled') ?? false;
+      final customSalt = prefs.getString('custom_salt') ?? '';
+      final hasCustomSalt = customSaltEnabled && customSalt.isNotEmpty;
+
       if (mounted) {
         // 保存当前上下文以便安全地关闭菜单
         _socketServMenuContext = context;
@@ -1003,8 +1024,12 @@ class _EditorScreenState extends State<EditorScreen> {
                         children: [
                           ListTile(
                             title: const Text('作为服务器已启动'),
-                            subtitle: Text(
-                                '端口: $port${hasPassword ? '    密码: $password' : '    [无密码]'}'),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('端口: $port${hasPassword ? '    密码: $password' : '    [无密码]'}'),
+                              ],
+                            ),
                             leading: const Icon(Icons.cloud_circle,
                                 color: Colors.green),
                           ),

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'socket_service.dart';
+import 'auth_utils.dart';
 
 class SocketSettingsPage extends StatefulWidget {
   const SocketSettingsPage({Key? key}) : super(key: key);
@@ -13,11 +14,13 @@ class SocketSettingsPage extends StatefulWidget {
 class _SocketSettingsPageState extends State<SocketSettingsPage> {
   final TextEditingController _portController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _saltController = TextEditingController();
   final SocketService _socketService = SocketService();
   List<String> _ipAddresses = [];
   bool _isLoading = true;
   bool _autoStart = false; // 是否在应用启动时自动启动服务器
   bool _passwordEnabled = false; // 是否启用密码验证
+  bool _customSaltEnabled = false; // 是否启用自定义盐值
   bool _useFullScroll = false; // 是否使用整体滚动布局
 
   // 服务器事件订阅
@@ -26,6 +29,7 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
   // 创建焦点节点来管理输入框的焦点
   final FocusNode _portFocusNode = FocusNode();
   final FocusNode _passwordFocusNode = FocusNode();
+  final FocusNode _saltFocusNode = FocusNode();
 
   // 固定部分的高度估计
   final double _statusCardHeight = 80.0; // 状态卡片高度估计
@@ -93,6 +97,11 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
     _passwordController.text = savedPassword;
     _passwordEnabled = savedPassword.isNotEmpty;
 
+    // 加载自定义盐值设置
+    _customSaltEnabled = prefs.getBool('custom_salt_enabled') ?? false;
+    final savedSalt = prefs.getString('custom_salt') ?? '';
+    _saltController.text = savedSalt;
+
     // 获取本地IP地址
     _ipAddresses = await _socketService.getLocalIpAddresses();
 
@@ -101,10 +110,10 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
     });
   }
 
-  Future<void> _saveSettings() async {
+  Future<void> _saveSettings({bool showSnackBar = true}) async {
     final port = int.tryParse(_portController.text);
     if (port == null || port <= 0 || port > 65535) {
-      if (mounted) {
+      if (mounted && showSnackBar) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('请输入有效的端口号 (1-65535)'),
@@ -125,7 +134,16 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
     final password = _passwordEnabled ? _passwordController.text : '';
     await prefs.setString('socket_password', password);
 
-    if (mounted) {
+    // 保存自定义盐值设置
+    await prefs.setBool('custom_salt_enabled', _customSaltEnabled);
+    final salt = _customSaltEnabled ? _saltController.text : '';
+    await prefs.setString('custom_salt', salt);
+
+    // 清除缓存的盐值并强制重新加载
+    AuthUtils.clearCachedSalt();
+    await AuthUtils.preloadSalt(forceReload: true);
+
+    if (mounted && showSnackBar) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('设置已保存'),
@@ -154,12 +172,18 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
     if (_socketService.status.value == SocketServiceStatus.running) {
       await _socketService.stopServer();
     } else {
+      // 先保存配置
+      await _saveSettings(showSnackBar: false);
+
       // 获取密码（如果启用）
       final password = _passwordEnabled ? _passwordController.text : null;
 
+      // 获取盐值（如果启用）
+      final salt = _customSaltEnabled ? _saltController.text : null;
+
       // 启动服务器
       final success =
-          await _socketService.startServer(port, password: password);
+          await _socketService.startServer(port, password: password, salt: salt);
 
       if (!success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -177,6 +201,15 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
         // 保存密码设置
         final savedPassword = _passwordEnabled ? _passwordController.text : '';
         await prefs.setString('socket_password', savedPassword);
+
+        // 保存自定义盐值设置
+        await prefs.setBool('custom_salt_enabled', _customSaltEnabled);
+        final savedSalt = _customSaltEnabled ? _saltController.text : '';
+        await prefs.setString('custom_salt', savedSalt);
+
+        // 清除缓存的盐值并强制重新加载
+        AuthUtils.clearCachedSalt();
+        await AuthUtils.preloadSalt(forceReload: true);
 
         // 如果启动成功且自动启动选项已开启，保存自动启动设置
         await prefs.setBool('socket_auto_start', _autoStart);
@@ -391,6 +424,80 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
                     enabled: _socketService.status.value !=
                         SocketServiceStatus.running,
                   ),
+
+                  // 盐值设置
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '使用自定义盐值',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              '开启后，服务端和客户端将使用自定义盐值进行认证',
+                              style: TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                      ),
+                      ValueListenableBuilder<SocketServiceStatus>(
+                        valueListenable: _socketService.status,
+                        builder: (context, status, child) {
+                          final isRunning = status == SocketServiceStatus.running;
+                          return Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isRunning)
+                                const Tooltip(
+                                  message: '服务运行时无法更改盐值设置',
+                                  child: Icon(
+                                    Icons.info_outline,
+                                    size: 16,
+                                    color: Colors.orange,
+                                  ),
+                                ),
+                              const SizedBox(width: 8),
+                              Switch(
+                                value: _customSaltEnabled,
+                                onChanged: isRunning
+                                    ? null // 服务运行时禁用开关
+                                    : (value) {
+                                        setState(() {
+                                          _customSaltEnabled = value;
+                                        });
+                                      },
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+
+                  if (_customSaltEnabled) ...[
+                    // 仅当启用自定义盐值时显示盐值输入框
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _saltController,
+                      decoration: const InputDecoration(
+                        labelText: '自定义盐值',
+                        hintText: '输入自定义盐值',
+                        border: OutlineInputBorder(),
+                      ),
+                      focusNode: _saltFocusNode,
+                      // 添加点击监听，确保点击时不会失去焦点
+                      onTap: () {
+                        // 这里仅用于捕获点击事件，不需要具体实现
+                      },
+                      enabled: _socketService.status.value !=
+                          SocketServiceStatus.running,
+                    ),
+                  ],
                 ],
               ],
             ),
@@ -498,6 +605,18 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('远程同步 · 服务端'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () async {
+            // 在返回前保存配置
+            if (_socketService.status.value != SocketServiceStatus.running) {
+              await _saveSettings(showSnackBar: false);
+            }
+            if (mounted) {
+              Navigator.of(context).pop();
+            }
+          },
+        ),
       ),
       // 设置 resizeToAvoidBottomInset 为 true，允许布局自动调整以适应键盘
       // 这样键盘弹出时底部按钮组会上升，中间可滚动部分会适应新的高度
@@ -585,8 +704,10 @@ class _SocketSettingsPageState extends State<SocketSettingsPage> {
     // 释放资源
     _portController.dispose();
     _passwordController.dispose();
+    _saltController.dispose(); // 释放盐值输入框控制器
     _portFocusNode.dispose(); // 释放端口输入框焦点节点
     _passwordFocusNode.dispose(); // 释放密码输入框焦点节点
+    _saltFocusNode.dispose(); // 释放盐值输入框焦点节点
     super.dispose();
   }
 }

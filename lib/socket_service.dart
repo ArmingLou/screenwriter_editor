@@ -113,13 +113,19 @@ class SocketService with WidgetsBindingObserver {
   // 盐值，用于密码哈希
   String _salt = '';
 
-  /// 设置密码
-  void setPassword(String? password) {
+  /// 设置密码和盐值
+  /// [password] 可选的访问密码，如果提供则启用密码验证
+  /// [salt] 可选的自定义盐值，如果提供则使用自定义盐值进行认证
+  Future<void> setPassword(String? password, {String? salt}) async {
     _password = password;
     _passwordRequired = password != null && password.isNotEmpty;
 
-    // 使用固定盐值，客户端和服务端共享
-    _salt = AuthUtils.fixedSalt;
+    // 如果提供了自定义盐值，使用自定义盐值，否则使用 AuthUtils.getSalt() 获取盐值
+    if (salt != null && salt.isNotEmpty) {
+      _salt = salt;
+    } else {
+      _salt = await AuthUtils.getSalt();
+    }
   }
 
   /// 检查客户端是否已认证
@@ -193,13 +199,14 @@ class SocketService with WidgetsBindingObserver {
   /// 启动Socket服务器
   /// [port] 服务器端口
   /// [password] 可选的访问密码，如果提供则启用密码验证
-  Future<bool> startServer(int port, {String? password}) async {
+  /// [salt] 可选的自定义盐值，如果提供则使用自定义盐值进行认证
+  Future<bool> startServer(int port, {String? password, String? salt}) async {
     if (status.value == SocketServiceStatus.running) {
       return true;
     }
 
-    // 设置密码
-    setPassword(password);
+    // 设置密码和盐值
+    await setPassword(password, salt: salt);
 
     // 清理已认证客户端列表
     _authenticatedClients.clear();
