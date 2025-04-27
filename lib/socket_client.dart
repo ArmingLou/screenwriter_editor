@@ -235,7 +235,9 @@ class SocketClient with WidgetsBindingObserver {
       // 检查是否删除的是默认服务器
       bool wasDefault = false;
       for (var server in _savedServers) {
-        if (server.host == config.host && server.port == config.port && server.isDefault) {
+        if (server.host == config.host &&
+            server.port == config.port &&
+            server.isDefault) {
           wasDefault = true;
           break;
         }
@@ -282,7 +284,9 @@ class SocketClient with WidgetsBindingObserver {
       for (var config in configs) {
         // 检查是否删除的是默认服务器
         for (var server in _savedServers) {
-          if (server.host == config.host && server.port == config.port && server.isDefault) {
+          if (server.host == config.host &&
+              server.port == config.port &&
+              server.isDefault) {
             deletedDefault = true;
             break;
           }
@@ -482,7 +486,12 @@ class SocketClient with WidgetsBindingObserver {
       return success;
     }).catchError((e) {
       // 使用_handleError方法处理错误，避免重复触发错误事件
-      _handleError(e.toString());
+      if (e.toString().contains('Connection refused') ||
+          e.toString().contains('Connection timed out')) {
+        _handleError('网络问题或者远程服务器未启动');
+      } else {
+        _handleError(e.toString());
+      }
       return false;
     });
   }
@@ -543,7 +552,8 @@ class SocketClient with WidgetsBindingObserver {
       // 匹配 "code: XXX" 或 "code XXX" 模式
       RegExp(r'code[:]?\s+(\d+)'),
       // 匹配 "XXX Unauthorized" 或 "XXX Forbidden" 等 HTTP 状态描述
-      RegExp(r'(\d+)\s+(Unauthorized|Forbidden|Not Found|Internal Server Error)'),
+      RegExp(
+          r'(\d+)\s+(Unauthorized|Forbidden|Not Found|Internal Server Error)'),
     ];
 
     // 尝试每种模式
@@ -567,7 +577,7 @@ class SocketClient with WidgetsBindingObserver {
         errorMessage.toLowerCase().contains('authentication failed')) {
       return 401;
     } else if (errorMessage.toLowerCase().contains('forbidden') ||
-               errorMessage.toLowerCase().contains('blacklist')) {
+        errorMessage.toLowerCase().contains('blacklist')) {
       return 403;
     } else if (errorMessage.toLowerCase().contains('not found')) {
       return 404;
@@ -605,7 +615,8 @@ class SocketClient with WidgetsBindingObserver {
         final timestamp = DateTime.now().millisecondsSinceEpoch;
 
         // 生成 token
-        final token = AuthUtils.generateToken(server.password!, salt, timestamp);
+        final token =
+            AuthUtils.generateToken(server.password!, salt, timestamp);
 
         // 准备认证头部
         final Map<String, String> headers = {
@@ -681,21 +692,21 @@ class SocketClient with WidgetsBindingObserver {
       ));
 
       // if (Platform.isIOS) {
-        _clientErrorSubscription = Stream.periodic(checkDuaration).listen(
-          (_) async {
-            // 如果应用在前台，执行定期检查
-            if (_isAppInForeground &&
-                status.value == SocketClientStatus.connected) {
-              // 使用强制检查方法
-              await _forceCheckClinetStatus();
-            }
-          },
-          onError: (error, stackTrace) {
-            // 定期检查流发生错误
-            debugPrint('Periodic check error: $error');
-            // 不需要处理，因为这只是定期检查的错误，不影响服务器本身
-          },
-        );
+      _clientErrorSubscription = Stream.periodic(checkDuaration).listen(
+        (_) async {
+          // 如果应用在前台，执行定期检查
+          if (_isAppInForeground &&
+              status.value == SocketClientStatus.connected) {
+            // 使用强制检查方法
+            await _forceCheckClinetStatus();
+          }
+        },
+        onError: (error, stackTrace) {
+          // 定期检查流发生错误
+          debugPrint('Periodic check error: $error');
+          // 不需要处理，因为这只是定期检查的错误，不影响服务器本身
+        },
+      );
       // }
 
       debugPrint('连接成功，连接过程完成');
@@ -703,35 +714,29 @@ class SocketClient with WidgetsBindingObserver {
     } catch (e) {
       // 一般是 403 黑名单。 或者 _channel!.ready 失败。
       // 使用_handleError方法处理错误，避免重复触发错误事件
-      if(e.runtimeType == TimeoutException){
+      if (e.runtimeType == TimeoutException) {
         _handleError('连接超时');
         return false;
-      } else if(e.runtimeType == WebSocketException){
+      } else {
         // 尝试从 WebSocketException 的错误消息中解析 HTTP 状态码
         final String errorMessage = e.toString();
-        debugPrint('WebSocketException: $errorMessage');
-
-        // 测试特定的错误消息格式
-        final testMessage = "WebSocketException: Connection to 'http://172.20.10.2:8080#' was not upgraded to websocket, HTTP status code: 403";
-        final testStatusCode = _extractStatusCodeFromError(testMessage);
-        debugPrint('测试消息提取的状态码: ${testStatusCode ?? "无法提取"}');
 
         int? statusCode = _extractStatusCodeFromError(errorMessage);
-        debugPrint('提取到的 HTTP 状态码: ${statusCode ?? "无法提取"}');
 
-        if(statusCode == 401) {
+        if (statusCode == 401) {
           _handleError('连接失败，授权失败');
-        } else if(statusCode == 403) {
+        } else if (statusCode == 403) {
           _handleError('连接失败，您已被加入黑名单');
-        } else if(statusCode != null) {
+        } else if (statusCode != null) {
           _handleError('连接失败: HTTP $statusCode');
+        } else if (errorMessage.contains('Connection refused') ||
+            errorMessage.contains('Connection timed out')) {
+          _handleError('网络问题或者远程服务器未启动');
         } else {
           _handleError('连接失败: $errorMessage');
         }
         return false;
       }
-      _handleError(e.toString());
-      return false;
     }
   }
 
