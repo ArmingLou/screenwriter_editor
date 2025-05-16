@@ -2696,7 +2696,8 @@ Metadata: {
     },
     "chars_per_minu": 243.22,
     "dial_chars_per_minu": 171,
-    "chinaFormat": 1,
+    "chinaFormat": 3,
+    "rmBliankLine": 0,
     "embedFonts": false,
     "print": {
         "paper_size": "a4",
