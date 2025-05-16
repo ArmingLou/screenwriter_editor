@@ -2696,10 +2696,10 @@ Metadata: {
     },
     "chars_per_minu": 243.22,
     "dial_chars_per_minu": 171,
-    "chinaFormat": 3,
-    "rmBliankLine": 0,
     "embedFonts": false,
     "print": {
+        "chinaFormat": 3,
+        "rmBliankLine": 0,
         "paper_size": "a4",
         "font_size": 12,
         "character_spacing": 1,
