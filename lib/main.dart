@@ -2699,7 +2699,7 @@ Metadata: {
     "embedFonts": false,
     "print": {
         "chinaFormat": 3,
-        "rmBliankLine": 0,
+        "rmBlankLine": 0,
         "paper_size": "a4",
         "font_size": 12,
         "character_spacing": 1,
