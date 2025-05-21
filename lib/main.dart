@@ -2704,6 +2704,9 @@ Metadata: {
     "print": {
         "chinaFormat": 3,
         "rmBlankLine": 0,
+        "print_title_page": 1,
+        "print_preface_page": 1,
+        "scenes_numbers": "both",
         "paper_size": "a4",
         "font_size": 12,
         "character_spacing": 1,
