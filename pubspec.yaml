@@ -26,11 +26,23 @@ dependencies:
   intl: ^0.19.0
   crypto: ^3.0.3
   http: ^1.2.0
+  flutter_rust_bridge: 2.10.0
+  rust_lib_screenwriter_editor:
+    path: rust_builder
+  freezed_annotation: ^3.0.0
+  # 外部程序打开文件
+  open_file: ^3.5.10
+
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  integration_test:
+    sdk: flutter
+  freezed: ^3.0.6
+  build_runner: ^2.4.15
+  json_serializable: ^6.9.5
 
 flutter:
   uses-material-design: true

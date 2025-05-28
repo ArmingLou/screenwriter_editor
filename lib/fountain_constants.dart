@@ -1,5 +1,4 @@
 class FountainConstants {
-  
   // Fountain格式正则表达式
   static final Map<String, RegExp> regex = {
     'title_page': RegExp(
@@ -13,7 +12,8 @@ class FountainConstants {
       caseSensitive: false,
       unicode: true,
     ),
-    'scene_number': RegExp(r'#\s*(?:\$\{\s*([^\}\s]*)\s*\})?\s*((?:(?!\$\{).)*)\s*#'),
+    'scene_number':
+        RegExp(r'#\s*(?:\$\{\s*([^\}\s]*)\s*\})?\s*((?:(?!\$\{).)*)\s*#'),
     'transition': RegExp(r'^\s*(?:(>)([^\n\r]*(?!<[ \t]*))|[A-Z ]+TO:)$'),
     'character': FountainConstants.blockRegex['block_dialogue_begin']!,
     'parenthetical': RegExp(r'^[ \t]*(\(.+\)|（.+）)\s*$'),
@@ -42,11 +42,11 @@ class FountainConstants {
     'underline': RegExp(r'(_{1}(?=.+_{1}))(.+?)(_{1})'),
     'lyric': FountainConstants.blockRegex['lyric']!,
   };
-  
+
   // 样式标记字符映射
   static const Map<String, String> styleChars = {
     'note_begin_ext': 'இ',
-    'note_begin': '↺', 
+    'note_begin': '↺',
     'note_end': '↻',
     'italic': '☈',
     'bold': '↭',
@@ -70,7 +70,9 @@ class FountainConstants {
 
   // 块级元素正则
   static final Map<String, RegExp> blockRegex = {
-    'block_dialogue_begin': RegExp(r'^[ \t]*(((?!@)\p{Lu}[^\p{Ll}\r\n]*)|(@[^\r\n\(（\^]*))(\(.*\)|（.*）)?(\s*\^)?\s*$', unicode: true),
+    'block_dialogue_begin': RegExp(
+        r'^[ \t]*(((?!@)\p{Lu}[^\p{Ll}\r\n]*)|(@[^\r\n\(（\^]*))(\(.*\)|（.*）)?(\s*\^)?\s*$',
+        unicode: true),
     'block_except_dialogue_begin': RegExp(r'^(?=\s*[^\s]+.*$)'),
     'block_end': RegExp(r'^\s*$'),
     'line_break': RegExp(r'^\s{2,}$'),
@@ -93,7 +95,7 @@ class FountainConstants {
 
   // 不能使用注解和样式的特殊位置：
   // - 场景头行
-  // - 角色头行 
+  // - 角色头行
   // - session行
   // - transition行
   // - title page标签属性名之前位置

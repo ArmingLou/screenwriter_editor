@@ -270,16 +270,13 @@ class FountainParser {
           }
         } else if (isExterior) {
           statis.addIntextsScenes(isEnglish == 1 ? 'EXT.' : '外景', 1);
-          statis.addLocationTimeScenes(
-              name, isEnglish == 1 ? 'E' : '外', tp, 1);
+          statis.addLocationTimeScenes(name, isEnglish == 1 ? 'E' : '外', tp, 1);
         } else if (isInterior) {
           statis.addIntextsScenes(isEnglish == 1 ? 'INT.' : '内景', 1);
-          statis.addLocationTimeScenes(
-              name, isEnglish == 1 ? 'I' : '内', tp, 1);
+          statis.addLocationTimeScenes(name, isEnglish == 1 ? 'I' : '内', tp, 1);
         } else {
           statis.addIntextsScenes(isEnglish == 1 ? 'Unclear' : '不确定', 1);
-          statis.addLocationTimeScenes(
-              name, isEnglish == 1 ? '-' : '-', tp, 1);
+          statis.addLocationTimeScenes(name, isEnglish == 1 ? '-' : '-', tp, 1);
         }
       }
     }

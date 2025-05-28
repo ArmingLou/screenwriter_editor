@@ -15,9 +15,12 @@ void main() {
     // 从环境变量获取设备IP和端口，或使用默认值
     // 运行测试时可以设置环境变量: DEVICE_IP 和 DEVICE_PORT
     // 例如: DEVICE_IP=192.168.1.123 DEVICE_PORT=8888 flutter test test/socket_integration_test.dart
-    final String deviceIp = Platform.environment['DEVICE_IP'] ?? '192.168.3.248';
-    final int devicePort = int.parse(Platform.environment['DEVICE_PORT'] ?? '8080');
-    final String devicePassword = Platform.environment['DEVICE_PASSWORD'] ?? 'arming';
+    final String deviceIp =
+        Platform.environment['DEVICE_IP'] ?? '192.168.3.248';
+    final int devicePort =
+        int.parse(Platform.environment['DEVICE_PORT'] ?? '8080');
+    final String devicePassword =
+        Platform.environment['DEVICE_PASSWORD'] ?? 'arming';
 
     // 测试前的提示
     setUp(() {
@@ -125,18 +128,14 @@ void main() {
 
         print('发送fetch请求...');
         // 发送fetch请求
-        wsClient.sink.add(jsonEncode({
-          'type': 'fetch'
-        }));
+        wsClient.sink.add(jsonEncode({'type': 'fetch'}));
 
         // 等待响应，设置超时
-        final response = await completer.future.timeout(
-          const Duration(seconds: 10),
-          onTimeout: () {
-            print('等待响应超时');
-            return 'timeout';
-          }
-        );
+        final response = await completer.future
+            .timeout(const Duration(seconds: 10), onTimeout: () {
+          print('等待响应超时');
+          return 'timeout';
+        });
 
         // 关闭连接
         wsClient.sink.close();
@@ -154,7 +153,8 @@ void main() {
     test('2. 测试向真机发送push请求', () async {
       try {
         // 连接到真机上的WebSocket服务
-        final wsClient = IOWebSocketChannel.connect('ws://$deviceIp:$devicePort');
+        final wsClient =
+            IOWebSocketChannel.connect('ws://$deviceIp:$devicePort');
 
         // 认证状态
         bool isAuthenticated = devicePassword.isEmpty;
@@ -189,19 +189,15 @@ void main() {
         // 如果需要认证，先发送认证请求
         if (devicePassword.isNotEmpty) {
           print('发送认证请求...');
-          wsClient.sink.add(jsonEncode({
-            'type': 'auth',
-            'password': devicePassword
-          }));
+          wsClient.sink
+              .add(jsonEncode({'type': 'auth', 'password': devicePassword}));
 
           // 等待认证结果
-          isAuthenticated = await authCompleter.future.timeout(
-            const Duration(seconds: 5),
-            onTimeout: () {
-              print('认证超时');
-              return false;
-            }
-          );
+          isAuthenticated = await authCompleter.future
+              .timeout(const Duration(seconds: 5), onTimeout: () {
+            print('认证超时');
+            return false;
+          });
 
           if (!isAuthenticated) {
             throw Exception('认证失败');
@@ -243,10 +239,7 @@ EXT. 公园 - NIGHT
         print('内容长度: ${testContent.length} 字符');
 
         // 发送push请求
-        wsClient.sink.add(jsonEncode({
-          'type': 'push',
-          'content': testContent
-        }));
+        wsClient.sink.add(jsonEncode({'type': 'push', 'content': testContent}));
 
         // 等待一段时间，确保内容已发送
         await Future.delayed(const Duration(seconds: 2));
@@ -267,7 +260,8 @@ EXT. 公园 - NIGHT
     test('3. 测试先fetch再push的完整流程', () async {
       try {
         // 连接到真机上的WebSocket服务
-        final wsClient = IOWebSocketChannel.connect('ws://$deviceIp:$devicePort');
+        final wsClient =
+            IOWebSocketChannel.connect('ws://$deviceIp:$devicePort');
         String? originalContent;
         final fetchCompleter = Completer<String>();
 
@@ -298,7 +292,8 @@ EXT. 公园 - NIGHT
                 }
               }
               // 处理内容响应
-              else if (data['type'] == 'content' && !fetchCompleter.isCompleted) {
+              else if (data['type'] == 'content' &&
+                  !fetchCompleter.isCompleted) {
                 originalContent = data['content'];
                 fetchCompleter.complete(data['content']);
               }
@@ -323,19 +318,15 @@ EXT. 公园 - NIGHT
         // 如果需要认证，先发送认证请求
         if (devicePassword.isNotEmpty) {
           print('发送认证请求...');
-          wsClient.sink.add(jsonEncode({
-            'type': 'auth',
-            'password': devicePassword
-          }));
+          wsClient.sink
+              .add(jsonEncode({'type': 'auth', 'password': devicePassword}));
 
           // 等待认证结果
-          isAuthenticated = await authCompleter.future.timeout(
-            const Duration(seconds: 5),
-            onTimeout: () {
-              print('认证超时');
-              return false;
-            }
-          );
+          isAuthenticated = await authCompleter.future
+              .timeout(const Duration(seconds: 5), onTimeout: () {
+            print('认证超时');
+            return false;
+          });
 
           if (!isAuthenticated) {
             throw Exception('认证失败');
@@ -346,34 +337,29 @@ EXT. 公园 - NIGHT
 
         // 1. 先发送fetch请求获取原始内容
         print('步骤1: 发送fetch请求获取原始内容...');
-        wsClient.sink.add(jsonEncode({
-          'type': 'fetch'
-        }));
+        wsClient.sink.add(jsonEncode({'type': 'fetch'}));
 
         // 等待响应
-        await fetchCompleter.future.timeout(
-          const Duration(seconds: 10),
-          onTimeout: () {
-            print('等待fetch响应超时');
-            throw TimeoutException('Fetch response timeout');
-          }
-        );
+        await fetchCompleter.future.timeout(const Duration(seconds: 10),
+            onTimeout: () {
+          print('等待fetch响应超时');
+          throw TimeoutException('Fetch response timeout');
+        });
 
         print('成功获取原始内容，长度: ${originalContent?.length ?? 0} 字符');
 
         // 2. 然后发送push请求，将修改后的内容推送回去
         // 在原始内容的基础上添加注释
-        final modifiedContent = originalContent != null && originalContent!.isNotEmpty
-            ? '${originalContent!}\n\n/* 这是一条由远程同步测试添加的注释 */\n'
-            : '这是一条测试内容，原始内容为空。\n\n/* 这是一条由远程同步测试添加的注释 */\n';
+        final modifiedContent =
+            originalContent != null && originalContent!.isNotEmpty
+                ? '${originalContent!}\n\n/* 这是一条由远程同步测试添加的注释 */\n'
+                : '这是一条测试内容，原始内容为空。\n\n/* 这是一条由远程同步测试添加的注释 */\n';
 
         print('步骤2: 发送push请求，推送修改后的内容...');
         print('修改后内容长度: ${modifiedContent.length} 字符');
 
-        wsClient.sink.add(jsonEncode({
-          'type': 'push',
-          'content': modifiedContent
-        }));
+        wsClient.sink
+            .add(jsonEncode({'type': 'push', 'content': modifiedContent}));
 
         // 等待一段时间，确保内容已发送
         await Future.delayed(const Duration(seconds: 2));

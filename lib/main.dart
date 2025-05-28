@@ -10,7 +10,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter_quill/quill_delta.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_quill/flutter_quill.dart';
-import 'package:path/path.dart' as path;
 import 'package:screenwriter_editor/socket_service.dart';
 import 'package:screenwriter_editor/socket_settings_page.dart';
 import 'package:screenwriter_editor/socket_client.dart';
@@ -24,6 +23,8 @@ import 'package:percent_indicator/percent_indicator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:toastification/toastification.dart';
 import 'auth_utils.dart';
+// DOCX预览页面
+import 'docx_preview_page.dart';
 
 // 自定义 Intent 类，用于拦截键盘事件
 class BlockKeyboardIntent extends Intent {
@@ -2759,13 +2760,13 @@ Metadata: {
 
       case "故事要素":
         _insertTextAtCursor('''#故事要素
-**故事要素：** 
+**故事要素：**
 (+ 意义)
 (+ 改变 [个体型/系统型/信息型])
-    --- 改变纬度 1: 
+    --- 改变纬度 1:
 (+ 选择)
-    --- 入题 选择: 
-    --- 转折 选择: 
+    --- 入题 选择:
+    --- 转折 选择:
     --- 终极 选择:
 ''');
         return;
@@ -2826,6 +2827,37 @@ Metadata: {
       default:
         _insertTextAtCursor(name);
         return;
+    }
+  }
+
+  // DOCX导出功能 - 打开预览页面
+  Future<void> _exportToDocx() async {
+    try {
+      // 获取当前文档内容
+      final fountainText = _docText();
+
+      if (fountainText.trim().isEmpty) {
+        _showError('文档内容为空，无法导出');
+        return;
+      }
+
+      // 获取文档标题
+      final titleText = _titleEditingController.text.trim();
+      final documentTitle = titleText.isNotEmpty ? titleText : '未命名剧本';
+
+      // 导航到DOCX预览页面
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => DocxPreviewPage(
+              fountainText: fountainText,
+              title: documentTitle,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      _showError('打开DOCX预览时发生错误: $e');
     }
   }
 
@@ -3018,6 +3050,17 @@ Metadata: {
                     ),
                   ],
                 ),
+              ),
+            ),
+
+            // DOCX导出按钮
+            Builder(
+              builder: (context) => IconButton(
+                icon: Icon(Icons.description, size: iconSize),
+                tooltip: '导出DOCX',
+                onPressed: _exportToDocx,
+                padding: EdgeInsets.only(right: 0, left: 0),
+                visualDensity: visualDensity,
               ),
             ),
 

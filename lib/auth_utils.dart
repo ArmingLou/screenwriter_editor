@@ -46,6 +46,7 @@ class AuthUtils {
   static String getSaltSync() {
     return _cachedSalt ?? fixedSalt;
   }
+
   /// 生成随机盐值
   static String generateSalt() {
     final random = Random.secure();
@@ -79,7 +80,8 @@ class AuthUtils {
   /// [password] 服务器存储的密码
   /// [salt] 盐值
   /// [timestamp] 时间戳，应该与生成 token 时使用的相同
-  static bool verifyToken(String token, String password, String salt, int timestamp) {
+  static bool verifyToken(
+      String token, String password, String salt, int timestamp) {
     final expectedToken = generateToken(password, salt, timestamp);
     return token == expectedToken;
   }

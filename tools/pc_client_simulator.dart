@@ -13,19 +13,15 @@ class PcClientSimulator {
       _channel = IOWebSocketChannel.connect('ws://$host:$port');
 
       // 设置消息监听
-      _channel!.stream.listen(
-        (message) {
-          _handleMessage(message);
-        },
-        onDone: () {
-          print('连接已关闭');
-          _isConnected = false;
-        },
-        onError: (error) {
-          print('连接错误: $error');
-          _isConnected = false;
-        }
-      );
+      _channel!.stream.listen((message) {
+        _handleMessage(message);
+      }, onDone: () {
+        print('连接已关闭');
+        _isConnected = false;
+      }, onError: (error) {
+        print('连接错误: $error');
+        _isConnected = false;
+      });
 
       _isConnected = true;
       print('已连接到 ws://$host:$port');
@@ -80,9 +76,7 @@ class PcClientSimulator {
       return;
     }
 
-    _channel!.sink.add(jsonEncode({
-      'type': 'fetch'
-    }));
+    _channel!.sink.add(jsonEncode({'type': 'fetch'}));
     print('已发送fetch请求');
   }
 
@@ -93,10 +87,7 @@ class PcClientSimulator {
       return;
     }
 
-    _channel!.sink.add(jsonEncode({
-      'type': 'push',
-      'content': content
-    }));
+    _channel!.sink.add(jsonEncode({'type': 'push', 'content': content}));
     print('已发送push请求，内容长度: ${content.length}字符');
   }
 
