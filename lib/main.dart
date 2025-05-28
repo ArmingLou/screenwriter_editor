@@ -2706,6 +2706,8 @@ Metadata: {
         "rmBlankLine": 0,
         "print_title_page": 1,
         "print_preface_page": 1,
+        "print_sections": 0,
+        "print_synopsis": 1,
         "scenes_numbers": "both",
         "paper_size": "a4",
         "font_size": 12,
