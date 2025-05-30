@@ -112,7 +112,7 @@ checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
 [[package]]
 name = "betterfountain_rust"
 version = "0.1.0"
-source = "git+https://github.com/ArmingLou/betterfountain-rust.git#dbba4c4967f4fbaf436174c0e4362d048da80c97"
+source = "git+https://github.com/ArmingLou/betterfountain-rust.git#b1b8bd9f70007ed30ec4807a3b4f06a9d993754b"
 dependencies = [
  "base64",
  "chrono",
@@ -317,7 +317,7 @@ dependencies = [
 [[package]]
 name = "docx-rs"
 version = "0.4.18-rc19"
-source = "git+https://github.com/bokuweb/docx-rs.git?branch=0.4.18-rc44#a5f9575dbfc3100332b41038b14997b62ed24af5"
+source = "git+https://github.com/ArmingLou/docx-rs.git#f517dc7cc3f4b7d46022477564dfac8ae87c3ef1"
 dependencies = [
  "base64",
  "image",
