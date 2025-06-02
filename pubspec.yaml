@@ -32,6 +32,8 @@ dependencies:
   freezed_annotation: ^3.0.0
   # 外部程序打开文件
   open_file: ^3.5.10
+  # Microsoft文档预览库
+  microsoft_viewer: ^0.0.5
 
 
 dev_dependencies:

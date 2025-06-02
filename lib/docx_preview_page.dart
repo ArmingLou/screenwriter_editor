@@ -6,6 +6,8 @@ import 'package:screenwriter_editor/bridge_generated.dart/api/docx_export.dart';
 import 'package:screenwriter_editor/bridge_generated.dart/frb_generated.dart';
 // 外部程序打开文件
 import 'package:open_file/open_file.dart';
+// Microsoft文档预览库
+import 'package:microsoft_viewer/microsoft_viewer.dart';
 
 class DocxPreviewPage extends StatefulWidget {
   final String fountainText;
@@ -28,6 +30,7 @@ class _DocxPreviewPageState extends State<DocxPreviewPage> {
   SimpleConf? _config;
   ParseResult? _parseResult;
   File? _tempFile; // 临时文件，用于保存
+  bool _showPreview = true; // 是否显示内置预览
 
   @override
   void initState() {
@@ -241,13 +244,26 @@ class _DocxPreviewPageState extends State<DocxPreviewPage> {
     }
   }
 
+  // 切换预览模式
+  void _togglePreview() {
+    setState(() {
+      _showPreview = !_showPreview;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('DOCX文档预览'),
         actions: [
-          if (!_isLoading && _tempFile != null) ...[
+          if (!_isLoading && _docxBytes != null) ...[
+            // 预览模式切换按钮
+            IconButton(
+              icon: Icon(_showPreview ? Icons.info : Icons.preview),
+              tooltip: _showPreview ? '显示文档信息' : '内置预览',
+              onPressed: _togglePreview,
+            ),
             // 外部程序打开按钮
             IconButton(
               icon: const Icon(Icons.open_in_new),
@@ -307,7 +323,82 @@ class _DocxPreviewPageState extends State<DocxPreviewPage> {
       );
     }
 
-    // 文档信息和保存界面
+    // 根据预览模式显示不同内容
+    if (_showPreview && _docxBytes != null) {
+      // 内置预览模式
+      return Column(
+        children: [
+          // 预览提示
+          // Container(
+          //   width: double.infinity,
+          //   padding: const EdgeInsets.all(12),
+          //   margin: const EdgeInsets.all(16),
+          //   decoration: BoxDecoration(
+          //     color: Colors.blue[50],
+          //     borderRadius: BorderRadius.circular(8),
+          //     border: Border.all(color: Colors.blue[200]!),
+          //   ),
+          //   child: Row(
+          //     children: [
+          //       Icon(Icons.preview, color: Colors.blue[600]),
+          //       const SizedBox(width: 8),
+          //       Expanded(
+          //         child: Text(
+          //           'DOCX文档内置预览',
+          //           style: TextStyle(color: Colors.blue[800]),
+          //         ),
+          //       ),
+          //     ],
+          //   ),
+          // ),
+          // microsoft_viewer预览器
+          Expanded(
+            child: MicrosoftViewer(
+                  _docxBytes!,
+                  key: UniqueKey(), // 使用UniqueKey确保每次都重新渲染
+                ),
+          ),
+          // 底部操作按钮
+          Container(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                // 外部打开按钮
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _openWithExternalApp,
+                    icon: const Icon(Icons.open_in_new, size: 20),
+                    label: const Text('外部打开'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: Colors.orange[600],
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // 保存按钮
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton.icon(
+                    onPressed: _saveToFile,
+                    icon: const Icon(Icons.download, size: 20),
+                    label: const Text('保存到本地'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: Colors.blue[600],
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    // 文档信息模式
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
