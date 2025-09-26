@@ -225,6 +225,7 @@ class _EditorScreenState extends State<EditorScreen> {
     "一句话梗概",
     "故事简介",
     "人设",
+    "基本叙事",
     "重复场景号 #\${}#",
     "标注 [[]]",
     "注释 /*  */",
@@ -235,9 +236,9 @@ class _EditorScreenState extends State<EditorScreen> {
     "下划线 _ _",
     "居中 > <",
     "分页 ===",
-    "##",
-    "=",
-    "~",
+    "标题 ##",
+    "梗概 =",
+    "歌词 ~",
   ];
 
   void addCompleteAfterParser(Statis statis, {Set<String>? dupSceneHeadings}) {
@@ -2678,8 +2679,8 @@ Credit: 作者
 Author: Arming
 Draft Date: $currentDate
 Contact: arming.lou@foxmail.com
-Font: Source Han Sans
-Font Italic: FZKai-Z03
+Font: Source Han Sans SC
+Font Italic: ChillKai
 
 Metadata: {
     "userPassword":"",
@@ -2754,6 +2755,11 @@ Metadata: {
 **人物设定：**
 
 ''');
+
+      case "基本叙事":
+        _insertTextAtCursor('''#触动的基本叙事
+/* 人物>蜕变/获悉/成事/失落 */ 
+''');
         return;
 
       case "重复场景号 #\${}#":
@@ -2794,6 +2800,18 @@ Metadata: {
 
       case "分页 ===":
         _insertTextAtCursor("===");
+        return;
+
+      case "标题 ##":
+        _insertTextAtCursor("##");
+        return;
+
+      case "梗概 =":
+        _insertTextAtCursor("=");
+        return;
+
+      case "歌词 ~":
+        _insertTextAtCursor("~");
         return;
 
       default:
