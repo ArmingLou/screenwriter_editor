@@ -226,6 +226,7 @@ class _EditorScreenState extends State<EditorScreen> {
     "故事简介",
     "人设",
     "基本叙事",
+    "处境反差",
     "重复场景号 #\${}#",
     "标注 [[]]",
     "注释 /*  */",
@@ -2757,9 +2758,15 @@ Metadata: {
 ''');
 
       case "基本叙事":
-        _insertTextAtCursor('''#触动的基本叙事
-/* 人物>蜕变/获悉/成事/失落 （含触动的人物关系）*/ 
-**基本叙事：**''');
+        _insertTextAtCursor('''#基本叙事
+/* 人物 > 蜕变/获悉/成事/失落 （含触动的人物关系）*/ 
+**基本叙事：** ''');
+        return;
+
+      case "处境反差":
+        _insertTextAtCursor('''#处境反差
+/* 二人处境反差 / 预期处境反差 */ 
+**处境反差：** ''');
         return;
 
       case "重复场景号 #\${}#":
