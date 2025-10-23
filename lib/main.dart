@@ -3053,7 +3053,7 @@ Metadata: {
             // DOCX导出按钮
             Builder(
               builder: (context) => IconButton(
-                icon: Icon(Icons.description, size: iconSize),
+                icon: Icon(Icons.upload_file, size: iconSize),
                 tooltip: '导出DOCX',
                 onPressed: _exportToDocx,
                 padding: EdgeInsets.only(right: 0, left: 0),
