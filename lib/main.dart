@@ -226,7 +226,7 @@ class _EditorScreenState extends State<EditorScreen> {
     "故事简介",
     "人设",
     "基本叙事",
-    "处境反差",
+    "感触叙事",
     "重复场景号 #\${}#",
     "标注 [[]]",
     "注释 /*  */",
@@ -2763,10 +2763,10 @@ Metadata: {
 **基本叙事：** ''');
         return;
 
-      case "处境反差":
-        _insertTextAtCursor('''#处境反差
+      case "感触叙事":
+        _insertTextAtCursor('''#感触叙事
 /* 二人处境反差 / 预期处境反差 */ 
-**处境反差：** ''');
+**感触叙事：** ''');
         return;
 
       case "重复场景号 #\${}#":
