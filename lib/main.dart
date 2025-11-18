@@ -2695,12 +2695,12 @@ Metadata: {
         "contentAccessibility":false,
         "documentAssembly":false
     },
-    "chars_per_minu": 243.22,
-    "dial_chars_per_minu": 171,
-    "dial_sec_per_char": 0.3,
-    "dial_sec_per_punc_short": 0.3,
-    "dial_sec_per_punc_long": 0.75,
-    "action_sec_per_char": 0.4,
+    "chars_per_minu": 420,
+    "dial_chars_per_minu": 240,
+    "dial_sec_per_char": 0.25,
+    "dial_sec_per_punc_short": 0.25,
+    "dial_sec_per_punc_long": 0.4,
+    "action_sec_per_char": 0.15,
     "embedFonts": false,
     "print": {
         "chinaFormat": 3,
