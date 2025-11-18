@@ -602,7 +602,8 @@ class _EditorScreenState extends State<EditorScreen> {
     if (!_editable) {
       if (force) {
         _readOnlyInputCount = 0;
-        _startEditIconBlinking();
+        // _startEditIconBlinking(); // 只是闪烁 编辑按钮提醒。
+        toggleEditMode(); // 直接切换编辑模式
         return true;
       }
       // 处理只读模式下的计数逻辑
@@ -616,7 +617,9 @@ class _EditorScreenState extends State<EditorScreen> {
 
       if (_readOnlyInputCount >= 3) {
         _readOnlyInputCount = 0;
-        _startEditIconBlinking();
+        // _startEditIconBlinking(); // 只是闪烁 编辑按钮提醒。
+        toggleEditMode(); // 直接切换编辑模式
+
         return true;
       }
     }
@@ -686,6 +689,45 @@ class _EditorScreenState extends State<EditorScreen> {
     //   addFormatTask();
     //   // }
     // });
+  }
+
+  void toggleEditMode() {
+    _showInfo("${_editable ? '👀 只读' : '✍️ 编辑'}模式");
+    setState(() {
+      _editable = !_editable;
+      if (!_editable) {
+        // 切换到只读模式
+        _historyRollback = false;
+        _editIconColor = Colors.black; // 重置图标颜色
+        _editIconBlinkTimer?.cancel(); // 取消正在进行的闪烁
+        _editIconBlinkTimer = null;
+
+        splitNewUndo();
+
+        // 关键：在切换到只读模式时，让编辑器失去焦点
+        // FocusScope.of(context).unfocus();
+        _focusNode.unfocus();
+
+        // 创建一个新的 FocusNode 来替换 QuillEditor 的 focusNode
+        // 这样可以确保编辑器不会继续接收键盘事件
+        Future.microtask(() {
+          setState(() {
+            // 这里不需要做任何事情，只是触发重建
+          });
+        });
+
+        // 可选：如果上面的方法仍然不能解决问题，可以尝试下面的方法
+        // 创建一个新的 FocusScopeNode，并将其设置为当前的 FocusScope
+        // FocusScope.of(context).setFirstFocus(FocusScopeNode());
+      } else {
+        // 切换到编辑模式，可以选择性地请求焦点
+        // _focusNode.requestFocus();
+
+        revertOrDoSplitNewUndo();
+      }
+      // 更新编辑器的只读状态
+      // _quillController.readOnly = !_editable;
+    });
   }
 
   // TODO Arming (2025-04-21) : 已知问题，quillEditor 内部实现，可能会将多次连续输入操作的undo按一定策略动态合并成一个，导致不是每次键盘就产生一个undo，可能是多次输入，逐渐合并成一次undo。
@@ -951,18 +993,20 @@ class _EditorScreenState extends State<EditorScreen> {
 
       // 获取密码设置
       final passwordEnabled = prefs.getBool('socket_password_enabled') ?? false;
-      final password = passwordEnabled ? prefs.getString('socket_password') : null;
+      final password =
+          passwordEnabled ? prefs.getString('socket_password') : null;
 
       // 获取自定义盐值设置
       final customSaltEnabled = prefs.getBool('custom_salt_enabled') ?? false;
-      final customSalt = customSaltEnabled ? prefs.getString('custom_salt') : null;
+      final customSalt =
+          customSaltEnabled ? prefs.getString('custom_salt') : null;
 
       // 清除缓存的盐值并强制重新加载
       AuthUtils.clearCachedSalt();
       await AuthUtils.preloadSalt(forceReload: true);
 
-      final success =
-          await _socketService.startServer(port, password: password, salt: customSalt);
+      final success = await _socketService.startServer(port,
+          password: password, salt: customSalt);
       if (success) {
         final securityStatus =
             password != null && password.isNotEmpty ? '，已启用密码验证' : '';
@@ -1034,7 +1078,8 @@ class _EditorScreenState extends State<EditorScreen> {
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('端口: $port${hasPassword ? '    密码: $password' : '    [无密码]'}'),
+                                Text(
+                                    '端口: $port${hasPassword ? '    密码: $password' : '    [无密码]'}'),
                               ],
                             ),
                             leading: const Icon(Icons.cloud_circle,
@@ -3567,42 +3612,7 @@ Metadata: {
                       ),
                       // tooltip: '切换只读/编辑模式',
                       onTap: () {
-                        _showInfo("${_editable ? '👀 只读' : '✍️ 编辑'}模式");
-                        setState(() {
-                          _editable = !_editable;
-                          if (!_editable) {
-                            // 切换到只读模式
-                            _historyRollback = false;
-                            _editIconColor = Colors.black; // 重置图标颜色
-                            _editIconBlinkTimer?.cancel(); // 取消正在进行的闪烁
-                            _editIconBlinkTimer = null;
-
-                            splitNewUndo();
-
-                            // 关键：在切换到只读模式时，让编辑器失去焦点
-                            // FocusScope.of(context).unfocus();
-                            _focusNode.unfocus();
-
-                            // 创建一个新的 FocusNode 来替换 QuillEditor 的 focusNode
-                            // 这样可以确保编辑器不会继续接收键盘事件
-                            Future.microtask(() {
-                              setState(() {
-                                // 这里不需要做任何事情，只是触发重建
-                              });
-                            });
-
-                            // 可选：如果上面的方法仍然不能解决问题，可以尝试下面的方法
-                            // 创建一个新的 FocusScopeNode，并将其设置为当前的 FocusScope
-                            // FocusScope.of(context).setFirstFocus(FocusScopeNode());
-                          } else {
-                            // 切换到编辑模式，可以选择性地请求焦点
-                            // _focusNode.requestFocus();
-
-                            revertOrDoSplitNewUndo();
-                          }
-                          // 更新编辑器的只读状态
-                          // _quillController.readOnly = !_editable;
-                        });
+                        toggleEditMode();
                       },
                       // padding: EdgeInsets.only(),
                       // constraints: BoxConstraints(),
