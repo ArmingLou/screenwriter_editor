@@ -18,45 +18,30 @@ final Mode fountain = Mode(
   },
   contains: [
     Mode(
-      className: 'scene-heading',
-      begin: '^(INT|EXT|INT\\./EXT|EST|INT/EXT|I/E)\\b.*',
-      relevance: 10
-    ),
+        className: 'scene-heading',
+        begin: '^(INT|EXT|INT\\./EXT|EST|INT/EXT|I/E)\\b.*',
+        relevance: 10),
+    Mode(className: 'action', begin: '^[^\\n]+', end: '\n', relevance: 5),
     Mode(
-      className: 'action',
-      begin: '^[^\\n]+',
-      end: '\n',
-      relevance: 5
-    ),
+        className: 'character',
+        begin: '^\\s*@[^\\n]+',
+        end: '\n',
+        relevance: 7),
     Mode(
-      className: 'character',
-      begin: '^\\s*@[^\\n]+',
-      end: '\n',
-      relevance: 7
-    ),
+        className: 'dialogue',
+        begin: '^\\s{2,}[^\\n]+',
+        end: '\n',
+        relevance: 5),
     Mode(
-      className: 'dialogue',
-      begin: '^\\s{2,}[^\\n]+',
-      end: '\n',
-      relevance: 5
-    ),
+        className: 'parenthetical',
+        begin: '^\\([^\\n]+\\)',
+        end: '\n',
+        relevance: 5),
     Mode(
-      className: 'parenthetical',
-      begin: '^\\([^\\n]+\\)',
-      end: '\n',
-      relevance: 5
-    ),
-    Mode(
-      className: 'transition',
-      begin: '^>\\s*[^\\n]+',
-      end: '\n',
-      relevance: 10
-    ),
-    Mode(
-      className: 'shot',
-      begin: '^\\s*~[^\\n]+',
-      end: '\n',
-      relevance: 10
-    ),
+        className: 'transition',
+        begin: '^>\\s*[^\\n]+',
+        end: '\n',
+        relevance: 10),
+    Mode(className: 'shot', begin: '^\\s*~[^\\n]+', end: '\n', relevance: 10),
   ],
 );

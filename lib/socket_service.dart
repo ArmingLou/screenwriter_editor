@@ -48,7 +48,8 @@ class SocketService with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
   }
 
-  final checkDuaration = Duration(seconds: 40); // 预期客户端每 40 秒必须有任何形式的 请求，否则主动断开客户端。
+  final checkDuaration =
+      Duration(seconds: 40); // 预期客户端每 40 秒必须有任何形式的 请求，否则主动断开客户端。
   final pingpongDuaration =
       Duration(seconds: 40); // 经调试，即使正常连接，ping - pong 时间差 iOS 可能都高达 20多秒
 
@@ -140,7 +141,8 @@ class SocketService with WidgetsBindingObserver {
   /// [request] HTTP请求，用于在认证失败时设置响应状态
   ///
   /// 返回一个包含认证结果和可能的错误信息的 Map
-  Future<Map<String, dynamic>> _verifyAuthToken(String token, String timestampStr, HttpRequest request) async {
+  Future<Map<String, dynamic>> _verifyAuthToken(
+      String token, String timestampStr, HttpRequest request) async {
     try {
       // 解析时间戳
       final timestamp = int.parse(timestampStr);
@@ -152,15 +154,22 @@ class SocketService with WidgetsBindingObserver {
 
       if (timeDifference > maxTimeDifference) {
         request.response.statusCode = 401; // Unauthorized
-        request.response.headers.add('X-Auth-Error', 'Token expired or invalid timestamp');
-        request.response.headers.add('X-Auth-Time-Difference', timeDifference.toString());
-        request.response.headers.add('X-Auth-Max-Difference', maxTimeDifference.toString());
+        request.response.headers
+            .add('X-Auth-Error', 'Token expired or invalid timestamp');
+        request.response.headers
+            .add('X-Auth-Time-Difference', timeDifference.toString());
+        request.response.headers
+            .add('X-Auth-Max-Difference', maxTimeDifference.toString());
         await request.response.close();
-        return {'success': false, 'error': 'Token expired or invalid timestamp'};
+        return {
+          'success': false,
+          'error': 'Token expired or invalid timestamp'
+        };
       }
 
       // 验证令牌
-      final isAuthenticated = AuthUtils.verifyToken(token, _password!, _salt, timestamp);
+      final isAuthenticated =
+          AuthUtils.verifyToken(token, _password!, _salt, timestamp);
 
       // 如果认证失败，设置响应状态
       if (!isAuthenticated) {
@@ -174,10 +183,15 @@ class SocketService with WidgetsBindingObserver {
     } catch (e) {
       // 时间戳解析失败或其他错误
       request.response.statusCode = 400; // Bad Request
-      request.response.headers.add('X-Auth-Error', 'Invalid timestamp or token format');
+      request.response.headers
+          .add('X-Auth-Error', 'Invalid timestamp or token format');
       request.response.headers.add('X-Auth-Exception', e.toString());
       await request.response.close();
-      return {'success': false, 'error': 'Invalid timestamp or token format', 'exception': e.toString()};
+      return {
+        'success': false,
+        'error': 'Invalid timestamp or token format',
+        'exception': e.toString()
+      };
     }
   }
 
@@ -241,22 +255,22 @@ class SocketService with WidgetsBindingObserver {
       );
 
       // if (Platform.isIOS) {
-        // 添加定期检查服务器状态
-        _serverErrorSubscription = Stream.periodic(checkDuaration).listen(
-          (_) async {
-            // 如果应用在前台，执行定期检查
-            if (_isAppInForeground &&
-                status.value == SocketServiceStatus.running) {
-              // 使用强制检查方法
-              await _forceCheckServerStatus();
-            }
-          },
-          onError: (error, stackTrace) {
-            // 定期检查流发生错误
-            debugPrint('Periodic check error: $error');
-            // 不需要处理，因为这只是定期检查的错误，不影响服务器本身
-          },
-        );
+      // 添加定期检查服务器状态
+      _serverErrorSubscription = Stream.periodic(checkDuaration).listen(
+        (_) async {
+          // 如果应用在前台，执行定期检查
+          if (_isAppInForeground &&
+              status.value == SocketServiceStatus.running) {
+            // 使用强制检查方法
+            await _forceCheckServerStatus();
+          }
+        },
+        onError: (error, stackTrace) {
+          // 定期检查流发生错误
+          debugPrint('Periodic check error: $error');
+          // 不需要处理，因为这只是定期检查的错误，不影响服务器本身
+        },
+      );
       // }
 
       status.value = SocketServiceStatus.running;
@@ -320,7 +334,8 @@ class SocketService with WidgetsBindingObserver {
 
       // 更新对应请求类型的计数
       if (requestType == 'fetch' || requestType == 'push') {
-        _clientRequestStats[ip]![requestType] = (_clientRequestStats[ip]![requestType] ?? 0) + 1;
+        _clientRequestStats[ip]![requestType] =
+            (_clientRequestStats[ip]![requestType] ?? 0) + 1;
 
         // 发送统计数据变化事件
         _eventController.add(SocketEvent(
@@ -369,7 +384,9 @@ class SocketService with WidgetsBindingObserver {
         final authHeader = request.headers.value('Authorization');
         final timestampHeader = request.headers.value('X-Auth-Timestamp');
 
-        if (authHeader != null && authHeader.startsWith('Bearer ') && timestampHeader != null) {
+        if (authHeader != null &&
+            authHeader.startsWith('Bearer ') &&
+            timestampHeader != null) {
           token = authHeader.substring(7); // 去掉 "Bearer " 前缀
           timestampStr = timestampHeader;
         } else {
@@ -504,8 +521,8 @@ class SocketService with WidgetsBindingObserver {
         final String type = data['type'];
 
         // 取消该客户端的 ping 超时计时器
-          _pingTimers[socket]?.cancel();
-          _pingTimers.remove(socket);
+        _pingTimers[socket]?.cancel();
+        _pingTimers.remove(socket);
 
         // 如果需要密码验证但客户端未认证，拒绝请求
         if (_passwordRequired && !_authenticatedClients.contains(socket)) {

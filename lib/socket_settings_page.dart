@@ -5,7 +5,7 @@ import 'socket_service.dart';
 import 'auth_utils.dart';
 
 class SocketSettingsPage extends StatefulWidget {
-  const SocketSettingsPage({Key? key}) : super(key: key);
+  const SocketSettingsPage({super.key});
 
   @override
   State<SocketSettingsPage> createState() => _SocketSettingsPageState();

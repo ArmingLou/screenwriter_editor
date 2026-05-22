@@ -10,7 +10,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter_quill/quill_delta.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_quill/flutter_quill.dart';
-import 'package:path/path.dart' as path;
 import 'package:screenwriter_editor/socket_service.dart';
 import 'package:screenwriter_editor/socket_settings_page.dart';
 import 'package:screenwriter_editor/socket_client.dart';
@@ -24,6 +23,8 @@ import 'package:percent_indicator/percent_indicator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:toastification/toastification.dart';
 import 'auth_utils.dart';
+// DOCX预览页面
+import 'docx_preview_page.dart';
 
 // 自定义 Intent 类，用于拦截键盘事件
 class BlockKeyboardIntent extends Intent {
@@ -224,10 +225,12 @@ class _EditorScreenState extends State<EditorScreen> {
     "一句话梗概",
     "故事简介",
     "人设",
-    "（人设填空）",
-    "故事要素",
+    "基本叙事",
+    "感触叙事",
     "重复场景号 #\${}#",
-    "标注 [[]]",
+    "标注 [[|]]",
+    "脚注 [[]]",
+    "书签 /*|  */",
     "注释 /*  */",
     "括号 ()",
     "斜体     * *",
@@ -236,9 +239,9 @@ class _EditorScreenState extends State<EditorScreen> {
     "下划线 _ _",
     "居中 > <",
     "分页 ===",
-    "##",
-    "=",
-    "~",
+    "标题 ##",
+    "梗概 =",
+    "歌词 ~",
   ];
 
   void addCompleteAfterParser(Statis statis, {Set<String>? dupSceneHeadings}) {
@@ -601,7 +604,8 @@ class _EditorScreenState extends State<EditorScreen> {
     if (!_editable) {
       if (force) {
         _readOnlyInputCount = 0;
-        _startEditIconBlinking();
+        // _startEditIconBlinking(); // 只是闪烁 编辑按钮提醒。
+        toggleEditMode(); // 直接切换编辑模式
         return true;
       }
       // 处理只读模式下的计数逻辑
@@ -615,7 +619,9 @@ class _EditorScreenState extends State<EditorScreen> {
 
       if (_readOnlyInputCount >= 3) {
         _readOnlyInputCount = 0;
-        _startEditIconBlinking();
+        // _startEditIconBlinking(); // 只是闪烁 编辑按钮提醒。
+        toggleEditMode(); // 直接切换编辑模式
+
         return true;
       }
     }
@@ -685,6 +691,45 @@ class _EditorScreenState extends State<EditorScreen> {
     //   addFormatTask();
     //   // }
     // });
+  }
+
+  void toggleEditMode() {
+    _showInfo("${_editable ? '👀 只读' : '✍️ 编辑'}模式");
+    setState(() {
+      _editable = !_editable;
+      if (!_editable) {
+        // 切换到只读模式
+        _historyRollback = false;
+        _editIconColor = Colors.black; // 重置图标颜色
+        _editIconBlinkTimer?.cancel(); // 取消正在进行的闪烁
+        _editIconBlinkTimer = null;
+
+        splitNewUndo();
+
+        // 关键：在切换到只读模式时，让编辑器失去焦点
+        // FocusScope.of(context).unfocus();
+        _focusNode.unfocus();
+
+        // 创建一个新的 FocusNode 来替换 QuillEditor 的 focusNode
+        // 这样可以确保编辑器不会继续接收键盘事件
+        Future.microtask(() {
+          setState(() {
+            // 这里不需要做任何事情，只是触发重建
+          });
+        });
+
+        // 可选：如果上面的方法仍然不能解决问题，可以尝试下面的方法
+        // 创建一个新的 FocusScopeNode，并将其设置为当前的 FocusScope
+        // FocusScope.of(context).setFirstFocus(FocusScopeNode());
+      } else {
+        // 切换到编辑模式，可以选择性地请求焦点
+        // _focusNode.requestFocus();
+
+        revertOrDoSplitNewUndo();
+      }
+      // 更新编辑器的只读状态
+      // _quillController.readOnly = !_editable;
+    });
   }
 
   // TODO Arming (2025-04-21) : 已知问题，quillEditor 内部实现，可能会将多次连续输入操作的undo按一定策略动态合并成一个，导致不是每次键盘就产生一个undo，可能是多次输入，逐渐合并成一次undo。
@@ -950,18 +995,20 @@ class _EditorScreenState extends State<EditorScreen> {
 
       // 获取密码设置
       final passwordEnabled = prefs.getBool('socket_password_enabled') ?? false;
-      final password = passwordEnabled ? prefs.getString('socket_password') : null;
+      final password =
+          passwordEnabled ? prefs.getString('socket_password') : null;
 
       // 获取自定义盐值设置
       final customSaltEnabled = prefs.getBool('custom_salt_enabled') ?? false;
-      final customSalt = customSaltEnabled ? prefs.getString('custom_salt') : null;
+      final customSalt =
+          customSaltEnabled ? prefs.getString('custom_salt') : null;
 
       // 清除缓存的盐值并强制重新加载
       AuthUtils.clearCachedSalt();
       await AuthUtils.preloadSalt(forceReload: true);
 
-      final success =
-          await _socketService.startServer(port, password: password, salt: customSalt);
+      final success = await _socketService.startServer(port,
+          password: password, salt: customSalt);
       if (success) {
         final securityStatus =
             password != null && password.isNotEmpty ? '，已启用密码验证' : '';
@@ -1033,7 +1080,8 @@ class _EditorScreenState extends State<EditorScreen> {
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('端口: $port${hasPassword ? '    密码: $password' : '    [无密码]'}'),
+                                Text(
+                                    '端口: $port${hasPassword ? '    密码: $password' : '    [无密码]'}'),
                               ],
                             ),
                             leading: const Icon(Icons.cloud_circle,
@@ -2679,8 +2727,8 @@ Credit: 作者
 Author: Arming
 Draft Date: $currentDate
 Contact: arming.lou@foxmail.com
-Font: Source Han Sans
-Font Italic: FZKai-Z03
+Font: Source Han Sans SC
+Font Italic: ChillKai
 
 Metadata: {
     "userPassword":"",
@@ -2694,12 +2742,12 @@ Metadata: {
         "contentAccessibility":false,
         "documentAssembly":false
     },
-    "chars_per_minu": 243.22,
-    "dial_chars_per_minu": 171,
-    "dial_sec_per_char": 0.3,
-    "dial_sec_per_punc_short": 0.3,
-    "dial_sec_per_punc_long": 0.75,
-    "action_sec_per_char": 0.4,
+    "chars_per_minu": 420,
+    "dial_chars_per_minu": 240,
+    "dial_sec_per_char": 0.25,
+    "dial_sec_per_punc_short": 0.25,
+    "dial_sec_per_punc_long": 0.4,
+    "action_sec_per_char": 0.15,
     "embedFonts": false,
     "print": {
         "chinaFormat": 3,
@@ -2755,44 +2803,36 @@ Metadata: {
 **人物设定：**
 
 ''');
+
+      case "基本叙事":
+        _insertTextAtCursor('''#基本叙事
+/* 人物 > 蜕变/获悉/成事/失落 （含触动的人物关系）*/ 
+**基本叙事：** ''');
         return;
 
-      case "故事要素":
-        _insertTextAtCursor('''#故事要素
-**故事要素：** 
-(+ 意义)
-(+ 改变 [个体型/系统型/信息型])
-    --- 改变纬度 1: 
-(+ 选择)
-    --- 入题 选择: 
-    --- 转折 选择: 
-    --- 终极 选择:
-''');
-        return;
-
-      case "（人设填空）":
-        _insertTextAtCursor('''(基本信息)
-(= 存量三质)
-    (++ 可怜之处，最大困境)
-    (-- 羡慕之处)
-    (++ 过人之处)
-    (-- 缺陷之处)
-    (++ 光辉之处)
-    (-- 不足之处)
-(= 增量三质)
-''');
+      case "感触叙事":
+        _insertTextAtCursor('''#感触叙事
+/* 关系人处境反差 / 预期关系反差 (一波三折)*/ 
+**感触叙事：** ''');
         return;
 
       case "重复场景号 #\${}#":
         _insertBracketsAtCursor(" #\${}#", offset: -2);
         return;
 
-      case "标注 [[]]":
+      case "脚注 [[]]":
         _insertBracketsAtCursor("[[]]");
+        return;
+
+      case "标注 [[|]]":
+        _insertBracketsAtCursor("[[|]]", offset: -2);
         return;
 
       case "注释 /*  */":
         _insertBracketsAtCursor("/*  */");
+
+      case "书签 /*|  */":
+        _insertBracketsAtCursor("/*|  */", offset: -3);
         return;
 
       case "括号 ()":
@@ -2823,9 +2863,52 @@ Metadata: {
         _insertTextAtCursor("===");
         return;
 
+      case "标题 ##":
+        _insertTextAtCursor("##");
+        return;
+
+      case "梗概 =":
+        _insertTextAtCursor("=");
+        return;
+
+      case "歌词 ~":
+        _insertTextAtCursor("~");
+        return;
+
       default:
         _insertTextAtCursor(name);
         return;
+    }
+  }
+
+  // DOCX导出功能 - 打开预览页面
+  Future<void> _exportToDocx() async {
+    try {
+      // 获取当前文档内容
+      final fountainText = _docText();
+
+      if (fountainText.trim().isEmpty) {
+        _showError('文档内容为空，无法导出');
+        return;
+      }
+
+      // 获取文档标题
+      final titleText = _titleEditingController.text.trim();
+      final documentTitle = titleText.isNotEmpty ? titleText : '未命名剧本';
+
+      // 导航到DOCX预览页面
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => DocxPreviewPage(
+              fountainText: fountainText,
+              title: documentTitle,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      _showError('打开DOCX预览时发生错误: $e');
     }
   }
 
@@ -3018,6 +3101,17 @@ Metadata: {
                     ),
                   ],
                 ),
+              ),
+            ),
+
+            // DOCX导出按钮
+            Builder(
+              builder: (context) => IconButton(
+                icon: Icon(Icons.upload_file, size: iconSize),
+                tooltip: '导出DOCX',
+                onPressed: _exportToDocx,
+                padding: EdgeInsets.only(right: 0, left: 0),
+                visualDensity: visualDensity,
               ),
             ),
 
@@ -3527,42 +3621,7 @@ Metadata: {
                       ),
                       // tooltip: '切换只读/编辑模式',
                       onTap: () {
-                        _showInfo("${_editable ? '👀 只读' : '✍️ 编辑'}模式");
-                        setState(() {
-                          _editable = !_editable;
-                          if (!_editable) {
-                            // 切换到只读模式
-                            _historyRollback = false;
-                            _editIconColor = Colors.black; // 重置图标颜色
-                            _editIconBlinkTimer?.cancel(); // 取消正在进行的闪烁
-                            _editIconBlinkTimer = null;
-
-                            splitNewUndo();
-
-                            // 关键：在切换到只读模式时，让编辑器失去焦点
-                            // FocusScope.of(context).unfocus();
-                            _focusNode.unfocus();
-
-                            // 创建一个新的 FocusNode 来替换 QuillEditor 的 focusNode
-                            // 这样可以确保编辑器不会继续接收键盘事件
-                            Future.microtask(() {
-                              setState(() {
-                                // 这里不需要做任何事情，只是触发重建
-                              });
-                            });
-
-                            // 可选：如果上面的方法仍然不能解决问题，可以尝试下面的方法
-                            // 创建一个新的 FocusScopeNode，并将其设置为当前的 FocusScope
-                            // FocusScope.of(context).setFirstFocus(FocusScopeNode());
-                          } else {
-                            // 切换到编辑模式，可以选择性地请求焦点
-                            // _focusNode.requestFocus();
-
-                            revertOrDoSplitNewUndo();
-                          }
-                          // 更新编辑器的只读状态
-                          // _quillController.readOnly = !_editable;
-                        });
+                        toggleEditMode();
                       },
                       // padding: EdgeInsets.only(),
                       // constraints: BoxConstraints(),
