@@ -228,7 +228,9 @@ class _EditorScreenState extends State<EditorScreen> {
     "基本叙事",
     "感触叙事",
     "重复场景号 #\${}#",
-    "标注 [[]]",
+    "标注 [[|]]",
+    "脚注 [[]]",
+    "书签 /*|  */",
     "注释 /*  */",
     "括号 ()",
     "斜体     * *",
@@ -2818,12 +2820,19 @@ Metadata: {
         _insertBracketsAtCursor(" #\${}#", offset: -2);
         return;
 
-      case "标注 [[]]":
+      case "脚注 [[]]":
         _insertBracketsAtCursor("[[]]");
+        return;
+
+      case "标注 [[|]]":
+        _insertBracketsAtCursor("[[|]]", offset: -2);
         return;
 
       case "注释 /*  */":
         _insertBracketsAtCursor("/*  */");
+
+      case "书签 /*|  */":
+        _insertBracketsAtCursor("/*|  */", offset: -3);
         return;
 
       case "括号 ()":

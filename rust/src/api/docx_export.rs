@@ -143,7 +143,7 @@ pub async fn export_to_docx(
 
     // 创建解析器并解析文本
     let mut parser = FountainParser::new();
-    let parsed_result = parser.parse(&text, &conf, true);
+    let parsed_result = parser.parse(&text, &conf, true, None);
 
     // 使用betterfountain-rust的真正DOCX导出功能
     match generate_docx_document(&output_path, &conf, &parsed_result).await {
@@ -167,7 +167,7 @@ pub async fn parse_fountain_text(
 ) -> String {
     let conf: Conf = config.unwrap_or_default().into();
     let mut parser = FountainParser::new();
-    let result = parser.parse(&text, &conf, false);
+    let result = parser.parse(&text, &conf, false, None);
 
     // 返回简单的JSON格式结果
     serde_json::to_string(&result).unwrap_or_else(|_| "{}".to_string())
@@ -229,7 +229,7 @@ pub async fn export_to_docx_base64(
 
     // 创建解析器并解析文本
     let mut parser = FountainParser::new();
-    let parsed_result = parser.parse(&text, &conf, true);
+    let parsed_result = parser.parse(&text, &conf, true, None);
 
     // 使用特殊路径"$PREVIEW$"来生成Base64编码
     match generate_docx_document("$PREVIEW$", &conf, &parsed_result).await {
